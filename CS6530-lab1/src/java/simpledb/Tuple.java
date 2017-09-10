@@ -1,8 +1,16 @@
 package simpledb;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
+
+import org.omg.PortableServer.THREAD_POLICY_ID;
+
+import com.sun.jndi.url.iiopname.iiopnameURLContextFactory;
+
+import simpledb.TupleDesc.TDItem;
 
 /**
  * Tuple maintains information about the contents of a tuple. Tuples have a
@@ -11,6 +19,10 @@ import java.util.Iterator;
  */
 public class Tuple implements Serializable {
 
+    private TupleDesc td;
+    private RecordId rid;
+    private List<Field> fields = new ArrayList<>();
+    
     private static final long serialVersionUID = 1L;
 
     /**
@@ -22,6 +34,16 @@ public class Tuple implements Serializable {
      */
     public Tuple(TupleDesc td) {
         // some code goes here
+        this.td = td;
+        Iterator<TDItem> iterator = td.iterator();
+        while (iterator.hasNext()) {
+            TDItem item = iterator.next();
+            if (item.fieldType.equals(Type.INT_TYPE)) {
+                fields.add(new IntField(0));
+            } else if (item.fieldType.equals(Type.STRING_TYPE)) {
+                fields.add(new StringField(null, 256));
+            }
+        }
     }
 
     /**
@@ -29,7 +51,7 @@ public class Tuple implements Serializable {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return td;
     }
 
     /**
@@ -38,7 +60,7 @@ public class Tuple implements Serializable {
      */
     public RecordId getRecordId() {
         // some code goes here
-        return null;
+        return rid;
     }
 
     /**
@@ -49,6 +71,7 @@ public class Tuple implements Serializable {
      */
     public void setRecordId(RecordId rid) {
         // some code goes here
+        this.rid = rid;
     }
 
     /**
@@ -61,6 +84,11 @@ public class Tuple implements Serializable {
      */
     public void setField(int i, Field f) {
         // some code goes here
+        if (i >= 0 && i < fields.size() && fields.get(i).getType().equals(f.getType())) {
+            fields.set(i, f);            
+        } else {
+            throw new IllegalArgumentException();
+        }
     }
 
     /**
@@ -71,7 +99,11 @@ public class Tuple implements Serializable {
      */
     public Field getField(int i) {
         // some code goes here
-        return null;
+        if (i >= 0 && i < fields.size()) {
+            return fields.get(i);
+        } else {
+            throw new IllegalArgumentException();
+        }
     }
 
     /**
@@ -84,7 +116,11 @@ public class Tuple implements Serializable {
      */
     public String toString() {
         // some code goes here
-        throw new UnsupportedOperationException("Implement this");
+        String result = "";
+        for (Field field : fields) {
+            result += field.toString()+"\t";
+        }
+        return result;
     }
 
     /**
@@ -94,7 +130,23 @@ public class Tuple implements Serializable {
     public Iterator<Field> fields()
     {
         // some code goes here
-        return null;
+        return new TupleIterator();
+    }
+    
+    private class TupleIterator implements Iterator<Field> {
+
+        int i = 0;
+        int n = fields.size();
+        
+        @Override
+        public boolean hasNext() {
+            return i < n;
+        }
+
+        @Override
+        public Field next() {
+            return fields.get(i++);
+        }
     }
 
     /**
@@ -103,5 +155,16 @@ public class Tuple implements Serializable {
     public void resetTupleDesc(TupleDesc td)
     {
         // some code goes here
+        this.td = td;
+        fields.clear();
+        Iterator<TDItem> iterator = td.iterator();
+        while (iterator.hasNext()) {
+            TDItem item = iterator.next();
+            if (item.fieldType.equals(Type.INT_TYPE)) {
+                fields.add(new IntField(0));
+            } else if (item.fieldType.equals(Type.STRING_TYPE)) {
+                fields.add(new StringField(null, 256));
+            }
+        }
     }
 }
