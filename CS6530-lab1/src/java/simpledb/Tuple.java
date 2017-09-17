@@ -117,9 +117,10 @@ public class Tuple implements Serializable {
     public String toString() {
         // some code goes here
         String result = "";
-        for (Field field : fields) {
-            result += field.toString()+"\t";
+        for (int i = 0; i < fields.size() - 1; i++) {
+            result += fields.get(i).toString()+"\t";
         }
+        result += fields.get(fields.size() - 1);
         return result;
     }
 

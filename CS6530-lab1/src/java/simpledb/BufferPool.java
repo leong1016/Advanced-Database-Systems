@@ -1,8 +1,12 @@
 package simpledb;
 
 import java.io.*;
-
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+
+import com.sun.org.apache.bcel.internal.generic.IF_ACMPEQ;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -16,6 +20,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * @Threadsafe, all fields are final
  */
 public class BufferPool {
+    
+    int max;
+    HashMap<PageId, BPItem> pool;
+    
+    private class BPItem {
+        Page page;
+        TransactionId tid;
+        Permissions perm;
+        
+        public BPItem(Page page, TransactionId tid, Permissions perm) {
+            this.page = page;
+            this.tid = tid;
+            this.perm = perm;
+        }
+    }
+    
     /** Bytes per page, including header. */
     private static final int PAGE_SIZE = 4096;
 
@@ -33,6 +53,8 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
+        max = numPages;
+        pool = new HashMap<>(max);
     }
     
     public static int getPageSize() {
@@ -67,7 +89,26 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        if (pool.containsKey(pid)) {
+            BPItem item = pool.get(pid);
+            if (item.tid == null) {
+                pool.put(pid, new BPItem(item.page, tid, perm));
+                return item.page;
+            } else {
+                if (item.tid.equals(tid)) {
+                    return item.page;
+                } else {
+                    throw new TransactionAbortedException();
+                }
+            }
+        }
+        if (pool.size() == max) {
+            throw new DbException("Bufferpool is full.");
+        }
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+        Page page = dbFile.readPage(pid);
+        pool.put(pid, new BPItem(page, tid, perm));
+        return page;
     }
 
     /**
