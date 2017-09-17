@@ -56,9 +56,9 @@ public class RecordId implements Serializable {
         if (this == o) return true;
         if (o == null) return false;
         if (!this.getClass().equals(o.getClass())) return false;
-        RecordId r = (RecordId) o;
-        if (!r.pid.equals(r.pid)) return false;
-        if (r.tupleno != r.tupleno) return false;
+        RecordId that = (RecordId) o;
+        if (!this.pid.equals(that.pid)) return false;
+        if (this.tupleno != that.tupleno) return false;
         return true;
     }
 

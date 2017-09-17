@@ -221,11 +221,11 @@ public class TupleDesc implements Serializable {
         if (this == o) return true;
         if (o == null) return false;
         if (this.getClass() != o.getClass()) return false;
-        TupleDesc t = (TupleDesc) o;
-        if (this.n != t.n) return false;
-        for (int i = 0; i < t.n; i++) {
-            if (t.getFieldType(i) == null) return false;
-            if (!this.getFieldType(i).equals(t.getFieldType(i))) return false;
+        TupleDesc that = (TupleDesc) o;
+        if (this.n != that.n) return false;
+        for (int i = 0; i < that.n; i++) {
+            if (that.getFieldType(i) == null) return false;
+            if (!this.getFieldType(i).equals(that.getFieldType(i))) return false;
         }
         return true;
     }
