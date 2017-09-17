@@ -1,12 +1,7 @@
 package simpledb;
 
 import java.io.*;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-
-import com.sun.org.apache.bcel.internal.generic.IF_ACMPEQ;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
