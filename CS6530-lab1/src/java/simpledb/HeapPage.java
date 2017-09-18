@@ -48,7 +48,6 @@ public class HeapPage implements Page {
         header = new byte[getHeaderSize()];
         for (int i=0; i<header.length; i++)
             header[i] = dis.readByte();
-        
         tuples = new Tuple[numSlots];
         try{
             // allocate and read the actual records of this page
@@ -67,8 +66,7 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
-
+        return (BufferPool.getPageSize() * 8) / (td.getSize() * 8 + 1);
     }
 
     /**
@@ -76,9 +74,8 @@ public class HeapPage implements Page {
      * @return the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
      */
     private int getHeaderSize() {        
-        
         // some code goes here
-        return 0;
+        return (int) Math.ceil(getNumTuples() / 8);
                  
     }
     
@@ -111,8 +108,9 @@ public class HeapPage implements Page {
      * @return the PageId associated with this page.
      */
     public HeapPageId getId() {
-    // some code goes here
-    throw new UnsupportedOperationException("implement this");
+        // some code goes here
+        return pid;
+//    throw new UnsupportedOperationException("implement this");
     }
 
     /**
@@ -282,7 +280,12 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int count = 0;
+        for(int i = 0; i < this.getNumTuples(); i++) {
+            if(!isSlotUsed(i))
+                count++;
+        }
+        return count;
     }
 
     /**
@@ -290,7 +293,13 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        return false;
+        if (i < 0 || i >= this.getNumTuples()) {
+            throw new IllegalArgumentException();
+        } else {
+            int a = i / 8;
+            int b = i % 8;
+            return (header[a] & (1 << b)) > 0;
+        }
     }
 
     /**
@@ -307,7 +316,28 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        return new HeapPageIterator();
+    }
+    
+    private class HeapPageIterator implements Iterator<Tuple> {
+
+        int i = 0;
+        
+        @Override
+        public boolean hasNext() {
+            return i < getNumTuples() - getNumEmptySlots();
+        }
+        
+        @Override
+        public Tuple next() {
+            return tuples[i++];
+        }
+        
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
+        
     }
 
 }

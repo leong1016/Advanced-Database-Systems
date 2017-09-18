@@ -71,8 +71,9 @@ public class RecordId implements Serializable {
     @Override
     public int hashCode() {
         // some code goes here
-        throw new UnsupportedOperationException("implement this");
-
+        int sum = this.pid.hashCode() + this.tupleno;
+        return (sum*(sum+1)/2) + this.tupleno;
+        //throw new UnsupportedOperationException("implement this");
     }
 
 }
