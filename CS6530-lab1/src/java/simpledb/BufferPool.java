@@ -90,11 +90,8 @@ public class BufferPool {
                 pool.put(pid, new BPItem(item.page, tid, perm));
                 return item.page;
             } else {
-                if (item.tid.equals(tid)) {
-                    return item.page;
-                } else {
-                    throw new TransactionAbortedException();
-                }
+                //do something regarding transaction id for future labs
+                return item.page;
             }
         }
         if (pool.size() == max) {

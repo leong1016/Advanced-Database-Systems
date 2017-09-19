@@ -80,9 +80,11 @@ public class HeapFile implements DbFile {
         // some code goes here
         try {
             RandomAccessFile raf = new RandomAccessFile(file, "r");
-            int start = pid.pageNumber() * BufferPool.getPageSize();
+            long start = pid.pageNumber() * BufferPool.getPageSize();
             byte[] data = new byte[BufferPool.getPageSize()];
-            raf.readFully(data, start, BufferPool.getPageSize());
+//            raf.readFully(data, start, BufferPool.getPageSize());
+            raf.seek(start);
+            raf.readFully(data);
             raf.close();
             Page page = new HeapPage((HeapPageId) pid, data);
             return page;
@@ -135,6 +137,7 @@ public class HeapFile implements DbFile {
         int i = 0;
         boolean open;
         Iterator<Tuple> iterator;
+        TransactionId tid = new TransactionId();
         
         @Override
         public void open() throws DbException, TransactionAbortedException {
@@ -148,7 +151,6 @@ public class HeapFile implements DbFile {
             if ((i == numPages() && iterator != null && !iterator.hasNext()))
                 return false;
             if ((iterator == null || !iterator.hasNext()) && i < numPages()) {
-                TransactionId tid = new TransactionId();
                 PageId pid = new HeapPageId(getId(), i++);
                 HeapPage page = (HeapPage)Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
                 iterator = page.iterator();
