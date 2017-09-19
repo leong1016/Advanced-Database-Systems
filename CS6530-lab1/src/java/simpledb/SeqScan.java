@@ -9,6 +9,11 @@ import java.util.*;
  */
 public class SeqScan implements DbIterator {
 
+    int tableid;
+    String tableAlias;
+    HeapFile file;
+    DbFileIterator iterator;
+    
     private static final long serialVersionUID = 1L;
 
     /**
@@ -29,6 +34,10 @@ public class SeqScan implements DbIterator {
      */
     public SeqScan(TransactionId tid, int tableid, String tableAlias) {
         // some code goes here
+        this.tableid = tableid;
+        this.tableAlias = tableAlias;
+        file = (HeapFile) Database.getCatalog().getDatabaseFile(tableid);
+        iterator = file.iterator(new TransactionId());
     }
 
     /**
@@ -37,7 +46,8 @@ public class SeqScan implements DbIterator {
      *       be the actual name of the table in the catalog of the database
      * */
     public String getTableName() {
-        return null;
+        // some code goes here
+        return Database.getCatalog().getTableName(tableid);
     }
 
     /**
@@ -46,7 +56,7 @@ public class SeqScan implements DbIterator {
     public String getAlias()
     {
         // some code goes here
-        return null;
+        return tableAlias;
     }
 
     /**
@@ -63,6 +73,8 @@ public class SeqScan implements DbIterator {
      */
     public void reset(int tableid, String tableAlias) {
         // some code goes here
+        this.tableid = tableid;
+        this.tableAlias = tableAlias;
     }
 
     public SeqScan(TransactionId tid, int tableid) {
@@ -71,6 +83,7 @@ public class SeqScan implements DbIterator {
 
     public void open() throws DbException, TransactionAbortedException {
         // some code goes here
+        iterator.open();
     }
 
     /**
@@ -85,26 +98,28 @@ public class SeqScan implements DbIterator {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return Database.getCatalog().getTupleDesc(tableid);
     }
 
     public boolean hasNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        return false;
+        return iterator.hasNext();
     }
 
     public Tuple next() throws NoSuchElementException,
             TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        return iterator.next();
     }
 
     public void close() {
         // some code goes here
+        iterator.close();
     }
 
     public void rewind() throws DbException, NoSuchElementException,
             TransactionAbortedException {
         // some code goes here
+        iterator.rewind();
     }
 }
