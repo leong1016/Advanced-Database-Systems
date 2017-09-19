@@ -9,6 +9,8 @@ import org.junit.experimental.theories.Theories;
 
 import com.sun.xml.internal.bind.v2.runtime.unmarshaller.XsiNilLoader.Array;
 
+import javafx.scene.chart.PieChart.Data;
+
 /**
  * HeapFile is an implementation of a DbFile that stores a collection of tuples
  * in no particular order. Tuples are stored on pages, each of which is a fixed
@@ -129,18 +131,26 @@ public class HeapFile implements DbFile {
     // see DbFile.java for javadocs
     public DbFileIterator iterator(TransactionId tid) {
         // some code goes here
-        return new HeapFileIterator();
+        return new HeapFileIterator(tid);
     }
 
     private class HeapFileIterator implements DbFileIterator {
 
-        int i = 0;
         boolean open;
+        int i;
+        TransactionId tid;
         Iterator<Tuple> iterator;
-        TransactionId tid = new TransactionId();
+        
+        public HeapFileIterator(TransactionId tid) {
+            this.tid = tid;
+        }
         
         @Override
         public void open() throws DbException, TransactionAbortedException {
+            i = 0;
+            PageId pid = new HeapPageId(getId(), i);
+            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
+            iterator = page.iterator();
             open = true;
         }
 
@@ -148,13 +158,8 @@ public class HeapFile implements DbFile {
         public boolean hasNext() throws DbException, TransactionAbortedException {
             if (!open)
                 return false;
-            if ((i == numPages() && iterator != null && !iterator.hasNext()))
+            if (i == numPages() - 1 && iterator != null && !iterator.hasNext())
                 return false;
-            if ((iterator == null || !iterator.hasNext()) && i < numPages()) {
-                PageId pid = new HeapPageId(getId(), i++);
-                HeapPage page = (HeapPage)Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
-                iterator = page.iterator();
-            }
             return true;
         }
 
@@ -163,7 +168,14 @@ public class HeapFile implements DbFile {
             if (!open) {
                 throw new NoSuchElementException();
             }
-            return iterator.next();
+            if (iterator.hasNext()) {
+                return iterator.next();
+            } else {
+                PageId pid = new HeapPageId(getId(), ++i);
+                HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
+                iterator = page.iterator();
+                return iterator.next();
+            }
         }
 
         @Override
@@ -174,9 +186,7 @@ public class HeapFile implements DbFile {
 
         @Override
         public void close() {
-            i = 0;
             open = false;
-            iterator = null;
         }
     }
 }
