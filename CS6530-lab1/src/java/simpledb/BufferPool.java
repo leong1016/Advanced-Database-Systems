@@ -16,7 +16,7 @@ import java.util.HashMap;
  */
 public class BufferPool {
     
-    int max;
+    int maxSizeBP;
     HashMap<PageId, BPItem> pool;
     
     private class BPItem {
@@ -48,8 +48,8 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
-        max = numPages;
-        pool = new HashMap<>(max);
+        maxSizeBP = numPages;
+        pool = new HashMap<>(maxSizeBP);
     }
     
     public static int getPageSize() {
@@ -94,7 +94,7 @@ public class BufferPool {
                 return item.page;
             }
         }
-        if (pool.size() == max) {
+        if (pool.size() == maxSizeBP) {
             throw new DbException("Bufferpool is full.");
         }
         DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
