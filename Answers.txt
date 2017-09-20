@@ -1,0 +1,41 @@
+Documentation for Lab1
+Ashkan Bashardoust
+Yulong Liang
+
+
+
+Design Decisions:
+•	Tuple.java
+Added: Tuple Id, Record Id and a list for Fields
+•	TupleDesc.java
+Added: Number of Fields and a list for Fields in TupleDesc
+•	Catalog.java
+Added: Database File, Name and one Primary Key for each table
+List for implementing Tables. No reason for choosing a list. We may implement it with hash map in the future.
+•	BufferPool.java
+Hash map from Page Id to Buffer Pool items. Each Buffer Pool item consists of a Page, Transaction Id and Permission.
+•	HeapPageId.java
+We implemented hashCode based on this formula:
+hashCode(a, b) = (a + b)*(a + b + 1)/2 + a
+Makes sure the hash for the same entry is always the same. Also the hash for two different entries can’t be the same.
+•	RecordId.java
+Same algorithm for hashing. In here we just hash pid and then hash the result with tupleno.
+•	HeapPage.java
+Simple mathematic formula for finding slot’s id in the page.
+•	HeapFile.java
+
+
+
+Change to API:
+No changes.
+
+Missing or Incomplete Elements:
+None.
+
+Time Spend Confusing Parts:
+Yulong: 6 days, 6 in average hours each = 36 hours
+Ashkan: 5 days, 5 in average hours each = 25 hours
+
+Confusing Parts:
+Figuring out the structure of objects.
+Iterator of HeapFile.
