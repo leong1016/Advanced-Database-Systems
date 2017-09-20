@@ -5,37 +5,51 @@ Yulong Liang
 
 
 Design Decisions:
-•	Tuple.java
-Added: Tuple Id, Record Id and a list for Fields
+
 •	TupleDesc.java
-Added: Number of Fields and a list for Fields in TupleDesc
+Use an an ArrayList for the TDItems in TupleDesc. The other methods are the operations on the ArrayList. Integer numFields is to store the total number of Fields.
+
+•	Tuple.java
+Use an ArrayList to store the Fields of the Tuple. There are two subtypes of fields: IntField which stores INT_TYPE and StringField which stores STRING_TYPE, so the ArrayList uses the generic type Fields. Also, we keep the input TupleDesc so that we will know the type of every field in the Tuple.
+
 •	Catalog.java
-Added: Database File, Name and one Primary Key for each table
-List for implementing Tables. No reason for choosing a list. We may implement it with hash map in the future.
+Use an ArrayList to store the Tables in the database. Table is defined as a nested class with the DbFile which keeps data in the hard drive, the name of the Table and the name of the Primary Key Field. Other methods use the method of the ArrayList. We don’t have a reasonable reason for choosing a List because this may cause extra time consumption. We may implement it with hash map in the future.
+
 •	BufferPool.java
-Hash map from Page Id to Buffer Pool items. Each Buffer Pool item consists of a Page, Transaction Id and Permission.
+In the BufferPool, the Page, the Transaction, the Permission should be connected with PageId. So we use a hash map from Page Id to BPItems. Each BPItem consists of a Page, a Transaction Id and a Permission. The most important part is getPage method, where we return the page when it is in BufferPool or fetch it from DbFile through Catalog when it is not.
+
 •	HeapPageId.java
 We implemented hashCode based on this formula:
 hashCode(a, b) = (a + b)*(a + b + 1)/2 + a
 Makes sure the hash for the same entry is always the same. Also the hash for two different entries can’t be the same.
+
 •	RecordId.java
 Same algorithm for hashing. In here we just hash pid and then hash the result with tupleno.
-•	HeapPage.java
-Simple mathematic formula for finding slot’s id in the page.
-•	HeapFile.java
 
+•	HeapPage.java
+No requirement for the data structure. We use the formula to calculate the number of Tuples and the size of Header. It is very interesting to find whether a slot is used where we implement with bitwise operation to get the bit from the array of bytes. The Iterator is easy if we realize all the Tuples are stored in the array - tuples. Need to override the remove method to throw an exception.
+
+•	HeapFile.java
+HeapFile is very difficult to understand unless read the javadoc of DbFile, HeapFile, DbFileIterator carefully. HeapFile does not store Pages but read Pages via I/O from the file on the disk. So the most important and tricky part is the readPage method where we use RandomAccessFile to access to any Page in the file. Iterator is also hard to implement because we should iterate every Tuple of every Page of the file. And also cannot access the pages directly but via the Catalog of database.
+
+•	SeqScan.java
+SeqScan simulates an operation of selection * from a table where we use the iterator from the HeapFile. It is more likely a test to test all the implemented parts.
 
 
 Change to API:
 No changes.
 
+
 Missing or Incomplete Elements:
 None.
 
-Time Spend Confusing Parts:
+
+Time Spent:
 Yulong: 6 days, 6 in average hours each = 36 hours
 Ashkan: 5 days, 5 in average hours each = 25 hours
 
-Confusing Parts:
-Figuring out the structure of objects.
-Iterator of HeapFile.
+
+Confusing/Difficult Parts:
+1. Figuring out the structure of objects. (The choice of Array, ArrayList, LinkedList or HashMap)
+2. The principle and iterator of HeapFile.
+3. In TupleDesc.java, there is a method named fieldNameToIndex which takes a name of the field and return the index of the field. However, the name of the field can be null, the requirement is not explicitly described when “null” is passed into the method. Currently, we throw an exception.
