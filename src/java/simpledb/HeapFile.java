@@ -3,14 +3,6 @@ package simpledb;
 import java.io.*;
 import java.util.*;
 
-import javax.print.attribute.ResolutionSyntax;
-
-import org.junit.experimental.theories.Theories;
-
-import com.sun.xml.internal.bind.v2.runtime.unmarshaller.XsiNilLoader.Array;
-
-import javafx.scene.chart.PieChart.Data;
-
 /**
  * HeapFile is an implementation of a DbFile that stores a collection of tuples
  * in no particular order. Tuples are stored on pages, each of which is a fixed

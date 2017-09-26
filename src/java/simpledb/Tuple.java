@@ -5,11 +5,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-
-import org.omg.PortableServer.THREAD_POLICY_ID;
-
-import com.sun.jndi.url.iiopname.iiopnameURLContextFactory;
-
 import simpledb.TupleDesc.TDItem;
 
 /**
