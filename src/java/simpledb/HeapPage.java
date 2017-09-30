@@ -22,6 +22,8 @@ public class HeapPage implements Page {
     byte[] oldData;
     private final Byte oldDataLock=new Byte((byte)0);
 
+    private TransactionId dirty;
+    
     /**
      * Create a HeapPage from a set of bytes of data read from disk.
      * The format of a HeapPage is a set of header bytes indicating
@@ -263,7 +265,12 @@ public class HeapPage implements Page {
      */
     public void markDirty(boolean dirty, TransactionId tid) {
         // some code goes here
-	// not necessary for lab1
+        // not necessary for lab1
+        if (dirty) {
+            this.dirty = tid;
+        } else {
+            this.dirty = null;
+        }
     }
 
     /**
@@ -271,8 +278,8 @@ public class HeapPage implements Page {
      */
     public TransactionId isDirty() {
         // some code goes here
-	// Not necessary for lab1
-        return null;      
+        // Not necessary for lab1
+        return this.dirty;      
     }
 
     /**

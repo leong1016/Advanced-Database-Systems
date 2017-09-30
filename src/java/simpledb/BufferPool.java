@@ -2,6 +2,8 @@ package simpledb;
 
 import java.io.*;
 import java.util.HashMap;
+import java.util.Queue;
+import java.util.concurrent.ArrayBlockingQueue;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -16,8 +18,9 @@ import java.util.HashMap;
  */
 public class BufferPool {
     
-    int maxSizeBP;
-    HashMap<PageId, BPItem> pool;
+    private int maxPages;
+    private HashMap<PageId, BPItem> pool;
+    private Queue<PageId> queue = new ArrayBlockingQueue<>(maxPages);
     
     private class BPItem {
         Page page;
@@ -48,8 +51,8 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
-        maxSizeBP = numPages;
-        pool = new HashMap<>(maxSizeBP);
+        maxPages = numPages;
+        pool = new HashMap<>(maxPages);
     }
     
     public static int getPageSize() {
@@ -94,12 +97,13 @@ public class BufferPool {
                 return item.page;
             }
         }
-        if (pool.size() == maxSizeBP) {
+        if (pool.size() == maxPages) {
             throw new DbException("Bufferpool is full.");
         }
         DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
         Page page = dbFile.readPage(pid);
         pool.put(pid, new BPItem(page, tid, perm));
+        queue.add(pid);
         return page;
     }
 
@@ -166,6 +170,7 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
+        
     }
 
     /**
@@ -195,7 +200,12 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for lab1
-
+        for (BPItem item : pool.values()) {
+            Page page = item.page;
+            if (page.isDirty() != null) {
+                flushPage(page.getId());
+            }
+        }
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -209,6 +219,7 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
+        pool.remove(pid);
     }
 
     /**
@@ -218,6 +229,11 @@ public class BufferPool {
     private synchronized  void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
+        BPItem item = pool.get(pid);
+        Page page = item.page;
+        DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+        dbFile.writePage(page);
+        page.markDirty(false, null);
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -234,6 +250,14 @@ public class BufferPool {
     private synchronized  void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
+        PageId pid = queue.remove();
+        try {
+            flushPage(pid);
+            discardPage(pid);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        
     }
 
 }
