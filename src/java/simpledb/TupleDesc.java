@@ -251,9 +251,9 @@ public class TupleDesc implements Serializable {
      */
     public String toString() {
         // some code goes here
-        String result = tdItems.get(0).fieldType + "[0]("+tdItems.get(0).fieldName + "[0]";
+        String result = tdItems.get(0).fieldType + "[0]("+tdItems.get(0).fieldName + "[0])";
         for (int i = 1; i < numFields; i++) {
-            result += ", " + tdItems.get(i).fieldType + "[" + i + "]("+tdItems.get(i).fieldName + "[" + i + "]";
+            result += ", " + tdItems.get(i).fieldType + "[" + i + "]("+tdItems.get(i).fieldName + "[" + i + "])";
         }
         return result;
     }
