@@ -251,13 +251,14 @@ public class BufferPool {
         int max = pool.size();
         int random = (int) (Math.random() * max);
         PageId pid = (PageId) pool.keySet().toArray()[random];
-        try {
-            flushPage(pid);
-            discardPage(pid);
-        } catch (IOException e) {
-            e.printStackTrace();
+        if (pool.get(pid).page.isDirty() != null) {
+            try {
+                flushPage(pid);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
-        
+        discardPage(pid);
     }
 
 }
