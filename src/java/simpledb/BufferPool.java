@@ -20,7 +20,6 @@ public class BufferPool {
     
     private int maxPages;
     private HashMap<PageId, BPItem> pool;
-    private Queue<PageId> queue = new ArrayBlockingQueue<>(maxPages);
     
     private class BPItem {
         Page page;
@@ -98,12 +97,11 @@ public class BufferPool {
             }
         }
         if (pool.size() == maxPages) {
-            throw new DbException("Bufferpool is full.");
+            evictPage();
         }
         DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
         Page page = dbFile.readPage(pid);
         pool.put(pid, new BPItem(page, tid, perm));
-        queue.add(pid);
         return page;
     }
 
@@ -250,7 +248,9 @@ public class BufferPool {
     private synchronized  void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
-        PageId pid = queue.remove();
+        int max = pool.size();
+        int random = (int) (Math.random() * max);
+        PageId pid = (PageId) pool.keySet().toArray()[random];
         try {
             flushPage(pid);
             discardPage(pid);
