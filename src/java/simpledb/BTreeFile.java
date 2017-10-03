@@ -270,8 +270,46 @@ public class BTreeFile implements DbFile {
 		// the new entry.  getParentWithEmtpySlots() will be useful here.  Don't forget to update
 		// the sibling pointers of all the affected leaf pages.  Return the page into which a 
 		// tuple with the given key field should be inserted.
-        return null;
-		
+	    assert(page.getMaxTuples() == page.getNumTuples());
+	    BTreeLeafPage newPage = (BTreeLeafPage) getEmptyPage(tid, dirtypages, BTreePageId.LEAF);
+	    
+	    //move to new page
+	    Iterator<Tuple> rIterator = page.reverseIterator();
+	    int numMove = page.getNumTuples() / 2;
+	    for (int i = 0; i < numMove; i++) {
+            if (rIterator.hasNext()) {
+                Tuple tuple = rIterator.next();
+                page.deleteTuple(tuple);
+                newPage.insertTuple(tuple);
+            } else {
+                throw new DbException("Error in moving.");
+            }
+        }
+	    
+	    //copy up the key field
+	    Iterator<Tuple> iterator = newPage.iterator();
+        Tuple tuple = iterator.next();
+	    BTreeEntry entry = new BTreeEntry(tuple.getField(keyField()), page.getId(), newPage.getId());
+	    BTreePageId parentId = page.getParentId();
+	    BTreeInternalPage internalPage = getParentWithEmptySlots(tid, dirtypages, parentId, entry.getKey());
+	    internalPage.insertEntry(entry); 
+	    internalPage.updateEntry(entry);
+	    
+	    //update sibling pointers
+	    BTreePageId rightId = page.getRightSiblingId();
+	    if (rightId != null) {
+	        BTreeLeafPage rightPage = (BTreeLeafPage) getPage(tid, dirtypages, rightId, Permissions.READ_WRITE);
+	        rightPage.setLeftSiblingId(newPage.getId());
+        }
+	    newPage.setRightSiblingId(rightId);
+	    page.setRightSiblingId(newPage.getId());
+	    newPage.setLeftSiblingId(page.getId());
+	    
+	    //update parent pointers
+	    updateParentPointers(tid, dirtypages, internalPage);
+	    
+	    return field.compare(Predicate.Op.LESS_THAN, entry.getKey()) ? page : newPage;
+//	    return findLeafPage(tid, dirtypages, internalPage.getId(), Permissions.READ_WRITE, entry.getKey());
 	}
 	
 	/**
@@ -300,8 +338,40 @@ public class BTreeFile implements DbFile {
 			BTreeInternalPage page, Field field) 
 					throws DbException, IOException, TransactionAbortedException {
 		// some code goes here
-		return null;
-	}
+        assert(page.getMaxEntries() == page.getNumEntries());
+        BTreeInternalPage newPage = (BTreeInternalPage) getEmptyPage(tid, dirtypages, BTreePageId.INTERNAL);
+        
+        //move to new page
+        Iterator<BTreeEntry> rIterator = page.reverseIterator();
+        int numMove = page.getNumEntries() / 2 + 1;
+        for (int i = 0; i < numMove; i++) {
+            if (rIterator.hasNext()) {
+                BTreeEntry entry = rIterator.next();
+                page.deleteKeyAndRightChild(entry);
+                newPage.insertEntry(entry);
+            } else {
+                throw new DbException("Error in moving.");
+            }
+        }
+        
+        //push up the key field
+        Iterator<BTreeEntry> iterator = newPage.iterator();
+        BTreeEntry entry = iterator.next();
+        newPage.deleteKeyAndLeftChild(entry);
+        Field upField = entry.getKey();
+        BTreeEntry upEntry = new BTreeEntry(upField, page.getId(), newPage.getId());
+        BTreePageId parentId = page.getParentId();
+        BTreeInternalPage internalPage = getParentWithEmptySlots(tid, dirtypages, parentId, upField);
+        internalPage.insertEntry(upEntry); 
+        internalPage.updateEntry(upEntry);
+     
+        //update parent pointers
+        updateParentPointers(tid, dirtypages, page);
+        updateParentPointers(tid, dirtypages, newPage);
+        updateParentPointers(tid, dirtypages, internalPage);
+        
+        return field.compare(Predicate.Op.LESS_THAN_OR_EQ, upField) ? page : newPage;
+	} 
 	
 	/**
 	 * Method to encapsulate the process of getting a parent page ready to accept new entries.
@@ -329,7 +399,6 @@ public class BTreeFile implements DbFile {
 		// this will be the new root of the tree
 		if(parentId.pgcateg() == BTreePageId.ROOT_PTR) {
 			parent = (BTreeInternalPage) getEmptyPage(tid, dirtypages, BTreePageId.INTERNAL);
-
 			// update the root pointer
 			BTreeRootPtrPage rootPtr = (BTreeRootPtrPage) getPage(tid, dirtypages,
 					BTreeRootPtrPage.getId(tableid), Permissions.READ_WRITE);

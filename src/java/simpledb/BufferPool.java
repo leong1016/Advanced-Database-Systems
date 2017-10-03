@@ -2,6 +2,7 @@ package simpledb;
 
 import java.io.*;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ArrayBlockingQueue;
 
@@ -168,7 +169,12 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
-        
+        DbFile file = Database.getCatalog().getDatabaseFile(tableId);
+        List<Page> pages = file.insertTuple(tid, t);
+        for (Page page : pages) {
+            Page page2 = getPage(tid, page.getId(), Permissions.READ_WRITE);
+            page2.markDirty(true, tid);
+        }
     }
 
     /**
