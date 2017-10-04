@@ -2,7 +2,6 @@ package simpledb;
 
 import java.io.*;
 import java.util.*;
-import java.nio.channels.FileChannel;
 
 import simpledb.Predicate.Op;
 
@@ -665,6 +664,35 @@ public class BTreeFile implements DbFile {
         // Move some of the tuples from the sibling to the page so
 		// that the tuples are evenly distributed. Be sure to update
 		// the corresponding parent entry.
+		int numTuples1 = page.getNumTuples();
+		int numTuples2 = sibling.getNumTuples();
+		int numMove = (numTuples1 + numTuples2) / 2 - numTuples1;
+		
+		if (isRightSibling) {
+			Iterator<Tuple> iterator = sibling.iterator();
+			for (int i = 0; i < numMove; i++) {
+				if (iterator.hasNext()) {
+					Tuple tuple = iterator.next();
+					sibling.deleteTuple(tuple);
+					page.insertTuple(tuple);
+				}
+			}
+			iterator = sibling.iterator();
+			Tuple firstRight = iterator.next();
+			entry.setKey(firstRight.getField(0));
+		} else {
+			Iterator<Tuple> rIterator = sibling.reverseIterator();
+			for (int i = 0; i < numMove; i++) {
+				if (rIterator.hasNext()) {
+					Tuple tuple = rIterator.next();
+					sibling.deleteTuple(tuple);
+					page.insertTuple(tuple);
+				}
+			}
+			rIterator = page.iterator();
+			Tuple firstRight = rIterator.next();
+			entry.setKey(firstRight.getField(0));
+		}
 	}
 
 	/**
@@ -741,6 +769,37 @@ public class BTreeFile implements DbFile {
 			BTreeInternalPage page, BTreeInternalPage leftSibling, BTreeInternalPage parent,
 			BTreeEntry parentEntry) throws DbException, IOException, TransactionAbortedException {
 		// some code goes here
+		
+		//calculate number to move
+		int numEntries1 = page.getNumEntries();
+		int numEntries2 = leftSibling.getNumEntries();
+		int numMove = (numEntries1 + numEntries2) / 2 - numEntries1;
+		
+		//put parent into right
+		BTreeEntry moveParentRight = new BTreeEntry(parentEntry.getKey(), 
+											  	   leftSibling.reverseIterator().next().getRightChild(), 
+											       page.iterator().next().getLeftChild());
+		page.insertEntry(moveParentRight);
+		
+		//put k-1 left into right
+		Iterator<BTreeEntry> leftIterator = leftSibling.reverseIterator();
+		for (int i = 0; i < numMove - 1; i++) {
+			BTreeEntry entry = leftIterator.next();
+			leftSibling.deleteKeyAndRightChild(entry);
+			page.insertEntry(entry);
+		}
+		
+		//put left into parent
+		BTreeEntry lastLeft = leftIterator.next();
+		leftSibling.deleteKeyAndRightChild(lastLeft);
+		parentEntry.setKey(lastLeft.getKey());
+		parentEntry.setLeftChild(leftSibling.getId());
+		parentEntry.setRightChild(page.getId());
+		parent.updateEntry(parentEntry);
+		
+		//update parent pointers
+		updateParentPointers(tid, dirtypages, page);
+
 	}
 	
 	/**
@@ -765,10 +824,37 @@ public class BTreeFile implements DbFile {
 			BTreeInternalPage page, BTreeInternalPage rightSibling, BTreeInternalPage parent,
 			BTreeEntry parentEntry) throws DbException, IOException, TransactionAbortedException {
 		// some code goes here
-        // Move some of the entries from the right sibling to the page so
+		// Move some of the entries from the right sibling to the page so
 		// that the entries are evenly distributed. Be sure to update
 		// the corresponding parent entry. Be sure to update the parent
 		// pointers of all children in the entries that were moved.
+		
+		//calculate number to move
+		int numEntries1 = page.getNumEntries();
+		int numEntries2 = rightSibling.getNumEntries();
+		int numMove = (numEntries1 + numEntries2) / 2 - numEntries1;
+
+		for (int i = 0; i < numMove; i++) {
+			
+			//get old right
+			BTreeEntry oldRight = rightSibling.iterator().next();
+			rightSibling.deleteKeyAndRightChild(oldRight);
+
+			//get old left
+			BTreeEntry oldLeft = page.reverseIterator().next();
+
+			//pull parent to left
+			BTreeEntry newLeftEntry = new BTreeEntry(parentEntry.getKey(), 
+													oldLeft.getRightChild(), 
+													oldRight.getLeftChild());
+			page.insertEntry(newLeftEntry);
+
+			//push right to parent
+			parentEntry.setKey(oldRight.getKey());
+			parent.updateEntry(parentEntry);
+		}
+		
+		updateParentPointers(tid, dirtypages, page);
 	}
 	
 	/**
