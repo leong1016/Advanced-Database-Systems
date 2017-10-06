@@ -799,7 +799,35 @@ public class BTreeFile implements DbFile {
 		
 		//update parent pointers
 		updateParentPointers(tid, dirtypages, page);
-
+		
+		
+//		//calculate number to move
+		
+//		int numEntries1 = page.getNumEntries();
+//		int numEntries2 = leftSibling.getNumEntries();
+//		int numMove = (numEntries1 + numEntries2) / 2 - numEntries1;
+//		
+//		for (int i = 0; i < numMove; i++) {
+//			
+//			//get old left
+//			BTreeEntry oldLeft = leftSibling.reverseIterator().next();
+//			leftSibling.deleteKeyAndRightChild(oldLeft);
+//
+//			//get old right
+//			BTreeEntry oldRight = page.iterator().next();
+//
+//			//pull parent to right
+//			BTreeEntry newRightEntry = new BTreeEntry(parentEntry.getKey(), 
+//													oldLeft.getRightChild(), 
+//													oldRight.getLeftChild());
+//			page.insertEntry(newRightEntry);
+//
+//			//push left to parent
+//			parentEntry.setKey(oldLeft.getKey());
+//			parent.updateEntry(parentEntry);
+//		}
+//		
+//		updateParentPointers(tid, dirtypages, page);
 	}
 	
 	/**
@@ -833,21 +861,21 @@ public class BTreeFile implements DbFile {
 		int numEntries1 = page.getNumEntries();
 		int numEntries2 = rightSibling.getNumEntries();
 		int numMove = (numEntries1 + numEntries2) / 2 - numEntries1;
-
+		
 		for (int i = 0; i < numMove; i++) {
 			
 			//get old right
 			BTreeEntry oldRight = rightSibling.iterator().next();
-			rightSibling.deleteKeyAndRightChild(oldRight);
+			rightSibling.deleteKeyAndLeftChild(oldRight);
 
 			//get old left
 			BTreeEntry oldLeft = page.reverseIterator().next();
 
 			//pull parent to left
-			BTreeEntry newLeftEntry = new BTreeEntry(parentEntry.getKey(), 
-													oldLeft.getRightChild(), 
-													oldRight.getLeftChild());
-			page.insertEntry(newLeftEntry);
+			BTreeEntry newLeft = new BTreeEntry(parentEntry.getKey(), 
+											   oldLeft.getRightChild(), 
+											   oldRight.getLeftChild());
+			page.insertEntry(newLeft);
 
 			//push right to parent
 			parentEntry.setKey(oldRight.getKey());
@@ -885,6 +913,24 @@ public class BTreeFile implements DbFile {
 		// the sibling pointers, and make the right page available for reuse.
 		// Delete the entry in the parent corresponding to the two pages that are merging -
 		// deleteParentEntry() will be useful here
+		
+		//move right to left
+		Iterator<Tuple> iterator = rightPage.iterator();
+		while (iterator.hasNext()) {
+			Tuple tuple = iterator.next();
+			rightPage.deleteTuple(tuple);
+			leftPage.insertTuple(tuple);
+		}
+		deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
+		setEmptyPage(tid, dirtypages, rightPage.getId().pageNumber());
+		
+		//set the sibling pointers
+		BTreePageId rightRightId = rightPage.getRightSiblingId();
+		leftPage.setRightSiblingId(rightRightId);
+		if (rightRightId != null) {
+			BTreeLeafPage rightRightPage = (BTreeLeafPage) getPage(tid, dirtypages, rightRightId, Permissions.READ_WRITE);
+			rightRightPage.setLeftSiblingId(leftPage.getId());
+		}
 	}
 
 	/**
@@ -918,6 +964,27 @@ public class BTreeFile implements DbFile {
 		// and make the right page available for reuse
 		// Delete the entry in the parent corresponding to the two pages that are merging -
 		// deleteParentEntry() will be useful here
+		
+		//get the right most of the left and the left most of the right
+		BTreeEntry lastLeft = leftPage.reverseIterator().next();
+		BTreeEntry firstRight = rightPage.iterator().next();
+		
+		//pull parent to left
+		BTreeEntry parentLeft = new BTreeEntry(parentEntry.getKey(), lastLeft.getRightChild(), firstRight.getLeftChild());
+		leftPage.insertEntry(parentLeft);
+		deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
+		
+		//move right to left
+		Iterator<BTreeEntry> iterator = rightPage.iterator();
+		while (iterator.hasNext()) {
+			BTreeEntry entry = iterator.next();
+			rightPage.deleteKeyAndLeftChild(entry);
+			leftPage.insertEntry(entry);
+		}
+		setEmptyPage(tid, dirtypages, rightPage.getId().pageNumber());
+		
+		//update parent pointers
+		updateParentPointers(tid, dirtypages, leftPage);
 	}
 	
 	/**
