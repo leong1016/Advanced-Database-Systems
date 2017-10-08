@@ -352,6 +352,9 @@ public class BTreeFile implements DbFile {
                 throw new DbException("Error in moving.");
             }
         }
+
+        updateParentPointers(tid, dirtypages, page);
+        updateParentPointers(tid, dirtypages, newPage);
         
         //push up the key field
         Iterator<BTreeEntry> iterator = newPage.iterator();
@@ -365,8 +368,6 @@ public class BTreeFile implements DbFile {
         internalPage.updateEntry(upEntry);
      
         //update parent pointers
-        updateParentPointers(tid, dirtypages, page);
-        updateParentPointers(tid, dirtypages, newPage);
         updateParentPointers(tid, dirtypages, internalPage);
         
         return field.compare(Predicate.Op.LESS_THAN_OR_EQ, upField) ? page : newPage;

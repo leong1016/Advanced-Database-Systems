@@ -264,18 +264,31 @@ public class BufferPool {
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
     private synchronized  void evictPage() throws DbException {
-        // some code goes here
-        // not necessary for lab1
-    		PageId pid = evictionList.get(0);
-    		evictionList.remove(0);
-        if (pool.get(pid).page.isDirty() != null) {
-            try {
-                flushPage(pid);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        discardPage(pid);
+    	// some code goes here
+    	// not necessary for lab1
+
+    		int i = 0;
+    		while (pool.get(evictionList.get(i)).page.isDirty() != null) {
+    			i++;
+    		}
+    		try {
+    			flushPage(evictionList.get(i));
+        		discardPage(evictionList.get(i));
+        		evictionList.remove(i);
+    		} catch (IOException e) {
+    			e.printStackTrace();
+    		}
+
+    	//    		PageId pid = evictionList.get(0);
+    	//    		evictionList.remove(0);
+    	//        if (pool.get(pid).page.isDirty() != null) {
+    	//            try {
+    	//                flushPage(pid);
+    	//            } catch (IOException e) {
+    	//                e.printStackTrace();
+    	//            }
+    	//        }
+    	//        discardPage(pid);
     }
 
 }
