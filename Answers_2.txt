@@ -2,15 +2,37 @@ Documentation for Lab2
 Ashkan Bashardoust
 Yulong Liang
 
-Page Eviction Policy: 
+**Page Eviction Policy**
+ 
 Least Recently Used (LRU) policy seemed the most reasonable. We implemented it with keeping a list of pages’ Ids.  We evict the first page in the list and shift all the remaining pages. We add a page at the end of the list. These operations take O(n). We also could implement them using Min Heap, so that the operation take O(log n).
-After implementing this policy, we couldn’t pass the tests. After meeting Zhuoyue we realized it may be a bug in the test and we changed our eviction policy to random eviction to move further 
+After implementing this policy, we couldn’t pass the tests. After meeting Zhuoyue we realized it may be a bug in the test and we changed our eviction policy to random eviction to move further.
 
-Split Pages: First we find the leaf where the element belongs. Then we add it in to that leaf. If its full, then we create another leaf and transfer the second half of the pages into that one. Then we create a internal node with middle node as header and these leafs as its children and we add it to the parent (If there’s an right sibling for it, we change its left child to the new leaf). We do the same for internal page insertion. The only difference is that we remove the middle node and if it’s the root, we create a new root.
+**Search in B+Tree**
 
-Redistribute Pages:For leaf pages we move the difference (A1 - (A1+A2)/2) to the other sibling one by one, and set the last one as header in parent. For internal pages we move difference -1 (plus the parent node) and then we move the last one to the parent node.
+Recursively looking for the page which a particular field belongs to from the top to the bottom of the B+Tree. If the field is less than or equal to the key field of the node, go down to the left child, otherwise to the right child. After get to the leaf-level pages, simply return the page. If the field is null, return the left most page of the B+ Tree which is the smallest page.
 
-Merge Pages: For leaf pages we merge both siblings into the left child and remove the header. For internal pages we merge both siblings and parent node together into the left child, and then remove the header.
+**Insertion to B+Tree**
+
+The pipeline of insertion is: Call inertTuple -> Call findLeafPage to locate the destination page -> Call splitLeafPage if the destination page is full -> Call getParentWithEmptySlots which will (1)create a new rood if the former root is full; (2)call splitInternalPage if the parent page is full; (3)simply return the parent page if the page does not need to be splitted -> After all the preparation is done, call the page’s insertTuple to finish the insertion.
+
+
+**Split Pages**
+
+As for leaf page, if the page is full we create another leaf page and transfer the second half of the pages into that one. Then we create a new entry with the key field equals that of the first entry in the new page and left and right pointers pointing to the two pages respectively. Then we add it to the parent page. The availability of the parent page is being taken care of by the getParentWithEmptySlots so we need to do nothing here. Finally, we update the sibling pointers which is pretty straight forward and also the parent pointers which is done by the updataParentPointers method.
+
+We do almost the same for internal page insertion. The differences are as follows: (1)We move one more entry to the new page in order to push up the first entry; (2)We push up the first entry from the new page to the parent page instead of copy up; (3)There is no sibling pointers in internal level we only update the parent pointers.
+
+**Redistribute Pages**
+
+For leaf pages we do a judgement first on whether the sibling is to left or right of the original page, where we do the opposite thing for left from right. Then we move the number of difference (A1 - (A1+A2)/2) entries from the sibling to the origin one by one and reset the key of the parent as that of the first entry from the right. 
+
+For internal pages we use two different moving methods in stealFromLeft and stealFromRight respectively for our own enrichment. In left, we first pull parent down to the right, then move numMove - 1 entries from left to right and finally push the next one from left to the parent. Of course modify the child and parent pointers is necessary. In Right, however, we do rotation move from the left via the parent and down to the right one by one. Both of these function well.
+
+**Merge Pages**
+It is almost the reverse of page split. For leaf pages we merge the right page into the left page and remove the parent entry. For internal pages we first pull the parent entry down to the left and then merge the right with left. One thing worthwhile note is that we should call setEmptyPage to make the page ready for reuse.
+
+**Bufferpool**
+It is very important to implement the insertTuple and deleteTuple in Bufferpool because these are the triggers of all the works we did in lab2. Typically, the process is getting the file of the tuple, calling insertTuple or deleteTuple in the file class and marking all the return pages to be dirty.
 
 Change to API:
 No changes.
@@ -18,12 +40,12 @@ No changes.
 Missing or Incomplete Elements:
 None.
 
-Time Spend Confusing Parts:
-Yulong: 6 days, 6 hours each in average = 36 hours
+Time Spent:
+Yulong: 7 days, 6 hours each in average = 42 hours
 Ashkan: 4 days, 6 hours each in average = 24 hours
 
 Confusing Parts:
 None.
 
 Bugs:
-As mentioned earlier, there seemed to be a bug in the test files and we had to change our eviction policy to random eviction.
+As mentioned earlier, there seems to be a bug in the test files and we had to change our eviction policy to random eviction. Not sure whether it is correct. 
