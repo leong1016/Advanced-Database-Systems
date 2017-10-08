@@ -1,0 +1,29 @@
+Documentation for Lab2
+Ashkan Bashardoust
+Yulong Liang
+
+Page Eviction Policy: 
+Least Recently Used (LRU) policy seemed the most reasonable. We implemented it with keeping a list of pages’ Ids.  We evict the first page in the list and shift all the remaining pages. We add a page at the end of the list. These operations take O(n). We also could implement them using Min Heap, so that the operation take O(log n).
+After implementing this policy, we couldn’t pass the tests. After meeting Zhuoyue we realized it may be a bug in the test and we changed our eviction policy to random eviction to move further 
+
+Split Pages: First we find the leaf where the element belongs. Then we add it in to that leaf. If its full, then we create another leaf and transfer the second half of the pages into that one. Then we create a internal node with middle node as header and these leafs as its children and we add it to the parent (If there’s an right sibling for it, we change its left child to the new leaf). We do the same for internal page insertion. The only difference is that we remove the middle node and if it’s the root, we create a new root.
+
+Redistribute Pages:For leaf pages we move the difference (A1 - (A1+A2)/2) to the other sibling one by one, and set the last one as header in parent. For internal pages we move difference -1 (plus the parent node) and then we move the last one to the parent node.
+
+Merge Pages: For leaf pages we merge both siblings into the left child and remove the header. For internal pages we merge both siblings and parent node together into the left child, and then remove the header.
+
+Change to API:
+No changes.
+
+Missing or Incomplete Elements:
+None.
+
+Time Spend Confusing Parts:
+Yulong: 6 days, 6 hours each in average = 36 hours
+Ashkan: 4 days, 6 hours each in average = 24 hours
+
+Confusing Parts:
+None.
+
+Bugs:
+As mentioned earlier, there seemed to be a bug in the test files and we had to change our eviction policy to random eviction.
