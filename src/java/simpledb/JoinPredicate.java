@@ -8,9 +8,9 @@ import java.io.Serializable;
  */
 public class JoinPredicate implements Serializable {
 
-	private int field1;
-	private int field2;
-	private Predicate.Op op;
+    private int field1;
+    private int field2;
+    private Predicate.Op op;
     private static final long serialVersionUID = 1L;
 
     /**
@@ -29,9 +29,9 @@ public class JoinPredicate implements Serializable {
      */
     public JoinPredicate(int field1, Predicate.Op op, int field2) {
         // some code goes here
-    		this.field1 = field1;
-    		this.field2 = field2;
-    		this.op = op;
+    	    this.field1 = field1;
+    	    this.field2 = field2;
+    	    this.op = op;
     }
 
     /**

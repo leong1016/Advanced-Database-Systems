@@ -7,8 +7,8 @@ import java.util.*;
  */
 public class Filter extends Operator {
 
-	private Predicate p;
-	private DbIterator child;
+    private Predicate p;
+    private DbIterator child;
     private static final long serialVersionUID = 1L;
 
     /**
@@ -22,8 +22,8 @@ public class Filter extends Operator {
      */
     public Filter(Predicate p, DbIterator child) {
         // some code goes here
-    		this.p = p;
-    		this.child = child;
+    	    this.p = p;
+    	    this.child = child;
     }
 
     public Predicate getPredicate() {
@@ -39,19 +39,19 @@ public class Filter extends Operator {
     public void open() throws DbException, NoSuchElementException,
             TransactionAbortedException {
         // some code goes here
-    		super.open();
-    		child.open();
+    	    super.open();
+    	    child.open();
     }
 
     public void close() {
         // some code goes here
-    		super.close();
-    		child.close();
+    	    super.close();
+    	    child.close();
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
-    		child.rewind();
+    	    child.rewind();
     }
 
     /**
@@ -66,16 +66,16 @@ public class Filter extends Operator {
     protected Tuple fetchNext() throws NoSuchElementException,
             TransactionAbortedException, DbException {
         // some code goes here
-    		if (!child.hasNext()) {
-    			return null;
-    		} else {
-    			Tuple tuple = child.next();
-        		if (p.filter(tuple)) {
-        			return tuple;
-        		} else {
-        			return fetchNext();
-        		}
-    		}
+    	    if (!child.hasNext()) {
+    	        return null;
+    	    } else {
+    	        Tuple tuple = child.next();
+    	        if (p.filter(tuple)) {
+    	            return tuple;
+    	        } else {
+    	            return fetchNext();
+    	        }
+    	    }
     }
 
     @Override
@@ -88,5 +88,4 @@ public class Filter extends Operator {
     public void setChildren(DbIterator[] children) {
         // some code goes here
     }
-
 }
