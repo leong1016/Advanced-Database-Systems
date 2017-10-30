@@ -2,7 +2,6 @@ package simpledb;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import simpledb.TupleDesc.TDItem;
@@ -36,7 +35,7 @@ public class Tuple implements Serializable {
             if (item.fieldType.equals(Type.INT_TYPE)) {
                 fields.add(new IntField(0));
             } else if (item.fieldType.equals(Type.STRING_TYPE)) {
-                fields.add(new StringField(null, 256));
+                fields.add(new StringField("", 256));
             }
         }
     }
