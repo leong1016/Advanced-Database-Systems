@@ -75,6 +75,7 @@ public class IntegerAggregator implements Aggregator {
                 break;
             case SUM:
                 result.put(gb, result.get(gb) + value);
+                break;
             case AVG:
                 Integer sum = result.get(gb) * count.get(gb) + value;
                 result.put(gb, (sum / (count.get(gb) + 1)));
