@@ -8,8 +8,8 @@ import java.io.Serializable;
  */
 public class RecordId implements Serializable {
 
-    PageId pid;
-    int tupleno;
+    private PageId pid;
+    private int tupleno;
     
     private static final long serialVersionUID = 1L;
 
