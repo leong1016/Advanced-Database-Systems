@@ -112,7 +112,6 @@ public class HeapPage implements Page {
     public HeapPageId getId() {
         // some code goes here
         return pid;
-//    throw new UnsupportedOperationException("implement this");
     }
 
     /**
@@ -245,6 +244,17 @@ public class HeapPage implements Page {
     public void deleteTuple(Tuple t) throws DbException {
         // some code goes here
         // not necessary for lab1
+        RecordId rid = t.getRecordId();
+        PageId pid = rid.getPageId();
+        int tno = rid.tupleno();
+        if (!this.pid.equals(pid)) {
+            throw new DbException("Tuple is not on this page.");
+        }
+        if (!isSlotUsed(tno)) {
+            throw new DbException("Tuple slot is already empty.");
+        }
+        tuples[tno] = null;
+        markSlotUsed(tno, false);
     }
 
     /**
@@ -257,6 +267,19 @@ public class HeapPage implements Page {
     public void insertTuple(Tuple t) throws DbException {
         // some code goes here
         // not necessary for lab1
+        if (getNumEmptySlots() == 0) {
+            throw new DbException("Page is full.");
+        }
+        if (!t.getTupleDesc().equals(td)) {
+            throw new DbException("Tuple Description is mismatch.");
+        }
+        int i = 0;
+        while (isSlotUsed(i)) {
+            i++;
+        }
+        t.setRecordId(new RecordId(pid, i));
+        tuples[i] = t;
+        markSlotUsed(i, true);
     }
 
     /**
@@ -315,6 +338,17 @@ public class HeapPage implements Page {
     private void markSlotUsed(int i, boolean value) {
         // some code goes here
         // not necessary for lab1
+        if (i < 0 || i >= this.getNumTuples()) {
+            throw new IllegalArgumentException();
+        } else {
+            int a = i / 8;
+            int b = i % 8;
+            if (isSlotUsed(i) ^ value) {
+                header[a] ^= (1 << b);
+            } else {
+                throw new IllegalArgumentException();
+            }
+        }
     }
 
     /**
