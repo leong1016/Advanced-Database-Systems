@@ -1,10 +1,22 @@
 package simpledb;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import simpledb.Aggregator.Op;
+
 /**
  * Knows how to compute some aggregate over a set of StringFields.
  */
 public class StringAggregator implements Aggregator {
 
+    private int gbfield;
+    private Type gbfieldtype;
+    private int afield;
+    private Op what;
+    private HashMap<Field, Integer> count;
+    private String gbfieldname = null;
+    
     private static final long serialVersionUID = 1L;
 
     /**
@@ -18,6 +30,13 @@ public class StringAggregator implements Aggregator {
 
     public StringAggregator(int gbfield, Type gbfieldtype, int afield, Op what) {
         // some code goes here
+        if (what != Op.COUNT)
+            throw new IllegalArgumentException();
+        this.gbfield = gbfield;
+        this.gbfieldtype = gbfieldtype;
+        this.afield = afield;
+        this.what = what;
+        count = new HashMap<>();
     }
 
     /**
@@ -26,6 +45,19 @@ public class StringAggregator implements Aggregator {
      */
     public void mergeTupleIntoGroup(Tuple tup) {
         // some code goes here
+        if (gbfieldname == null)
+            gbfieldname = tup.getTupleDesc().getFieldName(gbfield);
+        
+        Field gb = null;
+        if (gbfield != Aggregator.NO_GROUPING) {
+            gb = tup.getField(gbfield);
+        }
+        
+        if (count.containsKey(gb)) {
+            count.put(gb, count.get(gb) + 1);
+        } else {
+            count.put(gb, 1);
+        }
     }
 
     /**
@@ -38,7 +70,28 @@ public class StringAggregator implements Aggregator {
      */
     public DbIterator iterator() {
         // some code goes here
-        throw new UnsupportedOperationException("please implement me for lab3");
+        if (gbfield == Aggregator.NO_GROUPING) {
+            Type[] types = new Type[] {Type.INT_TYPE};
+            String[] strings = new String[] {what.toString()};
+            TupleDesc td = new TupleDesc(types, strings); 
+            ArrayList<Tuple> tuples = new ArrayList<>();
+            Tuple tuple = new Tuple(td);
+            tuple.setField(0, new IntField(count.get(null)));
+            tuples.add(tuple);
+            return new TupleIterator(td, tuples);
+        } else {
+            Type[] types = new Type[] {gbfieldtype, Type.INT_TYPE};
+            String[] strings = new String[] {gbfieldname, what.toString()};
+            TupleDesc td = new TupleDesc(types, strings); 
+            ArrayList<Tuple> tuples = new ArrayList<>();
+            for (Field field : count.keySet()) {
+                Tuple tuple = new Tuple(td);
+                tuple.setField(0, field);
+                tuple.setField(1, new IntField(count.get(field)));
+                tuples.add(tuple);
+            }
+            return new TupleIterator(td, tuples);
+        }
     }
 
 }
