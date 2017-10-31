@@ -152,7 +152,7 @@ public class HeapFile implements DbFile {
         page.deleteTuple(t);
         ArrayList<Page> list = new ArrayList<>();
         list.add(page);
-        return null;
+        return list;
     }
 
     // see DbFile.java for javadocs

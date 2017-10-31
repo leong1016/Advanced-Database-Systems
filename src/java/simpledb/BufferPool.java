@@ -177,7 +177,7 @@ public class BufferPool {
         DbFile file = Database.getCatalog().getDatabaseFile(tableId);
         List<Page> pages = file.insertTuple(tid, t);
         for (Page page : pages) {
-            getPage(tid, page.getId(), Permissions.READ_WRITE);
+//            getPage(tid, page.getId(), Permissions.READ_WRITE);
             page.markDirty(true, tid);
         }
     }
@@ -203,7 +203,7 @@ public class BufferPool {
     		DbFile file = Database.getCatalog().getDatabaseFile(tableid);
     		List<Page> pages = file.deleteTuple(tid, t);
     		for (Page page : pages) {
-			getPage(tid, page.getId(), Permissions.READ_WRITE);
+//			getPage(tid, page.getId(), Permissions.READ_WRITE);
 			page.markDirty(true, tid);
 		}
     }
