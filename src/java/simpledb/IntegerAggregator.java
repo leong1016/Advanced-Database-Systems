@@ -1,5 +1,6 @@
 package simpledb;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -52,7 +53,7 @@ public class IntegerAggregator implements Aggregator {
      */
     public void mergeTupleIntoGroup(Tuple tup) {
         // some code goes here
-        if (gbfieldname == null)
+        if (gbfield != Aggregator.NO_GROUPING && gbfieldname == null)
             gbfieldname = tup.getTupleDesc().getFieldName(gbfield);
         
         Integer value = ((IntField) tup.getField(afield)).getValue();
@@ -74,11 +75,9 @@ public class IntegerAggregator implements Aggregator {
                     result.put(gb, value);
                 break;
             case SUM:
+            case AVG:
                 result.put(gb, result.get(gb) + value);
                 break;
-            case AVG:
-                Integer sum = result.get(gb) * count.get(gb) + value;
-                result.put(gb, (sum / (count.get(gb) + 1)));
             }
         }
 
@@ -103,36 +102,43 @@ public class IntegerAggregator implements Aggregator {
             Type[] types = new Type[] {Type.INT_TYPE};
             String[] strings = new String[] {what.toString()};
             TupleDesc td = new TupleDesc(types, strings); 
-            ArrayList<Tuple> tuples = new ArrayList<>();
-            if (what == Op.COUNT) {
-                Tuple tuple = new Tuple(td);
+            Tuple tuple = new Tuple(td);
+            switch (what) {
+            case COUNT:
                 tuple.setField(0, new IntField(count.get(null)));
-                tuples.add(tuple);
-            } else {
-                Tuple tuple = new Tuple(td);
+                break;
+            case AVG:
+                tuple.setField(0, new IntField(result.get(null) / count.get(null)));
+                break;
+            default:
                 tuple.setField(0, new IntField(result.get(null)));
-                tuples.add(tuple);
+                break;
             }
+            ArrayList<Tuple> tuples = new ArrayList<>();
+            tuples.add(tuple);
             return new TupleIterator(td, tuples);
         } else {
             Type[] types = new Type[] {gbfieldtype, Type.INT_TYPE};
             String[] strings = new String[] {gbfieldname, what.toString()};
             TupleDesc td = new TupleDesc(types, strings); 
             ArrayList<Tuple> tuples = new ArrayList<>();
-            if (what == Op.COUNT) {
-                for (Field field : count.keySet()) {
-                    Tuple tuple = new Tuple(td);
+            for (Field field : count.keySet()) {
+                Tuple tuple = new Tuple(td);
+                switch (what) {
+                case COUNT:
                     tuple.setField(0, field);
                     tuple.setField(1, new IntField(count.get(field)));
-                    tuples.add(tuple);
-                }
-            } else {
-                for (Field field : result.keySet()) {
-                    Tuple tuple = new Tuple(td);
+                    break;
+                case AVG:
+                    tuple.setField(0, field);
+                    tuple.setField(1, new IntField(result.get(field) / count.get(field)));
+                    break;
+                default:
                     tuple.setField(0, field);
                     tuple.setField(1, new IntField(result.get(field)));
-                    tuples.add(tuple);
+                    break;
                 }
+                tuples.add(tuple);
             }
             return new TupleIterator(td, tuples);
         }
