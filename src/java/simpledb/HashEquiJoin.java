@@ -1,5 +1,6 @@
 package simpledb;
 
+import java.lang.reflect.Array;
 import java.util.*;
 
 /**
@@ -10,6 +11,10 @@ public class HashEquiJoin extends Operator {
     private JoinPredicate p;
     private DbIterator child1;
     private DbIterator child2;
+    private HashMap<Field, ArrayList<Tuple>> hash1 = new HashMap<>();
+    private HashMap<Field, ArrayList<Tuple>> hash2 = new HashMap<>();
+    private ArrayList<Tuple> result = new ArrayList<>();
+    private TupleIterator iterator;
     
     private static final long serialVersionUID = 1L;
 
@@ -59,19 +64,101 @@ public class HashEquiJoin extends Operator {
         super.open();
         child1.open();
         child2.open();
+        while (child1.hasNext()) {
+            Tuple tuple = child1.next();
+            Field field = tuple.getField(p.getField1());
+            if (hash1.containsKey(field)) {
+                ArrayList<Tuple> list = hash1.get(field);
+                list.add(tuple);
+                hash1.put(field, list);
+            } else {
+                ArrayList<Tuple> list = new ArrayList<>();
+                list.add(tuple);
+                hash1.put(field, list);
+            }
+        }
+        while (child2.hasNext()) {
+            Tuple tuple = child2.next();
+            Field field = tuple.getField(p.getField2());
+            if (hash2.containsKey(field)) {
+                ArrayList<Tuple> list = hash2.get(field);
+                list.add(tuple);
+                hash2.put(field, list);
+            } else {
+                ArrayList<Tuple> list = new ArrayList<>();
+                list.add(tuple);
+                hash2.put(field, list);
+            }
+        }
+        if (hash1.size() < hash2.size()) {
+            for (Field field : hash1.keySet()) {
+                if (!hash2.containsKey(field)) {
+                    continue;
+                }
+                ArrayList<Tuple> list1 = hash1.get(field);
+                ArrayList<Tuple> list2 = hash2.get(field);
+                for (Tuple tuple1 : list1) {
+                    for (Tuple tuple2 : list2) {
+                        Field field1 = tuple1.getField(p.getField1());
+                        Field field2 = tuple2.getField(p.getField2());
+                        if (field1.equals(field2)) {
+                            Tuple tuple = mergeTuple(tuple1, tuple2);
+                            result.add(tuple);
+                        }
+                    }
+                }
+            }
+        } else {
+            for (Field field : hash2.keySet()) {
+                if (!hash1.containsKey(field)) {
+                    continue;
+                }
+                ArrayList<Tuple> list1 = hash1.get(field);
+                ArrayList<Tuple> list2 = hash2.get(field);
+                for (Tuple tuple1 : list1) {
+                    for (Tuple tuple2 : list2) {
+                        Field field1 = tuple1.getField(p.getField1());
+                        Field field2 = tuple2.getField(p.getField2());
+                        if (field1.equals(field2)) {
+                            Tuple tuple = mergeTuple(tuple1, tuple2);
+                            result.add(tuple);
+                        }
+                    }
+                }
+            }
+        }
+        iterator = new TupleIterator(getTupleDesc(), result);
+        iterator.open();
     }
 
+    private Tuple mergeTuple (Tuple t1, Tuple t2) {
+        
+        int i = 0;
+        Tuple t = new Tuple(getTupleDesc());
+        Iterator<Field> iterator1 = t1.fields();
+        while (iterator1.hasNext()) {
+            t.setField(i++, iterator1.next());
+        }
+        Iterator<Field> iterator2 = t2.fields();
+        while (iterator2.hasNext()) {
+            t.setField(i++, iterator2.next());
+        }
+        return t;
+    }
+    
     public void close() {
         // some code goes here
         super.close();
         child1.close();
         child2.close();
+        iterator.close();
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
         child1.rewind();
         child2.rewind();
+        iterator.rewind();
     }
 
     transient Iterator<Tuple> listIt = null;
@@ -96,7 +183,11 @@ public class HashEquiJoin extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        if (iterator.hasNext()) {
+            return iterator.next();
+        } else {
+            return null;
+        }
     }
 
     @Override
