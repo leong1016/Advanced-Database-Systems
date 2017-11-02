@@ -179,6 +179,8 @@ public class BufferPool {
         for (Page page : pages) {
 //            getPage(tid, page.getId(), Permissions.READ_WRITE);
             page.markDirty(true, tid);
+            BPItem item = new BPItem(page, tid, Permissions.READ_WRITE);
+            pool.put(page.getId(), item);
         }
     }
 
@@ -205,6 +207,8 @@ public class BufferPool {
     		for (Page page : pages) {
 //			getPage(tid, page.getId(), Permissions.READ_WRITE);
 			page.markDirty(true, tid);
+			BPItem item = new BPItem(page, tid, Permissions.READ_WRITE);
+            pool.put(page.getId(), item);
 		}
     }
 

@@ -116,22 +116,42 @@ public class Join extends Operator {
             else
                 return null;
         }
-        if (!child2.hasNext()) {
-            if (!child1.hasNext()) {
-                return null;
+        
+        while (curr1 != null || child1.hasNext()) {
+            Tuple tuple1;
+            if (curr1 != null) {
+                tuple1 = curr1;
             } else {
                 curr1 = child1.next();
-                child2.rewind();
-                return fetchNext();
+                tuple1 = curr1;
             }
-        } else {
-            curr2 = child2.next();
-            if (p.filter(curr1, curr2)) {
-                return mergeTuple(curr1, curr2);
-            } else {
-                return fetchNext();
+            while (child2.hasNext()) {
+                Tuple tuple2 = child2.next();
+                if (p.filter(tuple1, tuple2)) {
+                    return mergeTuple(tuple1, tuple2);
+                }
             }
+            curr1 = null;
+            child2.rewind();
         }
+        return null;
+
+//        if (!child2.hasNext()) {
+//            if (!child1.hasNext()) {
+//                return null;
+//            } else {
+//                curr1 = child1.next();
+//                child2.rewind();
+//                return fetchNext();
+//            }
+//        } else {
+//            curr2 = child2.next();
+//            if (p.filter(curr1, curr2)) {
+//                return mergeTuple(curr1, curr2);
+//            } else {
+//                return fetchNext();
+//            }
+//        }
     }
     
     private Tuple mergeTuple (Tuple t1, Tuple t2) {
