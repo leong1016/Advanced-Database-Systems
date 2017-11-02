@@ -366,7 +366,16 @@ public class HeapPage implements Page {
         
         @Override
         public boolean hasNext() {
-            return i < getNumTuples() - getNumEmptySlots();
+            if (i == getNumTuples()) {
+                return false;
+            }
+            while (tuples[i] == null) {
+                i++;
+                if (i == getNumTuples()) {
+                    return false;
+                }
+            }
+            return true;
         }
         
         @Override
@@ -378,7 +387,6 @@ public class HeapPage implements Page {
         public void remove() {
             throw new UnsupportedOperationException();
         }
-        
     }
 
 }
