@@ -1,6 +1,7 @@
 package simpledb;
 
 import java.io.*;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
 import javax.xml.crypto.Data;
@@ -158,7 +159,7 @@ public class HeapFile implements DbFile {
     // see DbFile.java for javadocs
     public DbFileIterator iterator(TransactionId tid) {
         // some code goes here
-        return new HeapFileIterator(getId(), tid, numPages());
+        return new HeapFileIterator2(tid);
     }
     
     
@@ -233,21 +234,14 @@ public class HeapFile implements DbFile {
         private int numPages; 
     }
 
-    
-    
-    
-    
-    
-    
-    
-    private class HeapFileIterator3 implements DbFileIterator {
+    private class HeapFileIterator2 implements DbFileIterator {
 
         TransactionId tid;
         int i;
         boolean open;
         Iterator<Tuple> iterator;
         
-        public HeapFileIterator3(TransactionId tid) {
+        public HeapFileIterator2(TransactionId tid) {
             this.tid = tid;
         }
         
@@ -279,10 +273,10 @@ public class HeapFile implements DbFile {
 
         @Override
         public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException {
-            if (iterator.hasNext()) {
-                return iterator.next();
+            if (!open) {
+                throw new NoSuchElementException();
             } else {
-                return null;
+                return iterator.next();
             }
         }
 
