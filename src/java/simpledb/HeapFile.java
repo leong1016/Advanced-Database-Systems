@@ -1,10 +1,7 @@
 package simpledb;
 
 import java.io.*;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
-
-import javax.xml.crypto.Data;
 
 /**
  * HeapFile is an implementation of a DbFile that stores a collection of tuples
@@ -162,86 +159,14 @@ public class HeapFile implements DbFile {
         return new HeapFileIterator2(tid);
     }
     
-    
-    class HeapFileIterator implements DbFileIterator {
-        public HeapFileIterator(int HeapFileId, TransactionId tid, int numPages) {
-            this.HeapFileId = HeapFileId;
-            this.numPages = numPages;
-            this.tid = tid;
-            this.opened = false;
-        }
-
-        public void open() throws DbException, TransactionAbortedException {
-            this.curPageNum = 0;
-            this.curPageId = new HeapPageId(this.HeapFileId, this.curPageNum);
-            this.curPage = (HeapPage) Database.getBufferPool().getPage(this.tid, this.curPageId, Permissions.READ_WRITE);
-            this.curIterator = this.curPage.iterator();
-            this.opened = true;
-        }
-
-        public boolean hasNext() throws DbException, TransactionAbortedException {
-            if (this.opened) {
-                if (this.curPageNum < this.numPages-1 || this.curIterator.hasNext()) {
-                    return true;
-                } else {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        }
-
-        public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException {
-
-            if (this.opened) {
-                if (this.hasNext()) {
-                    if (this.curIterator.hasNext()) {
-                        return this.curIterator.next();
-                    } else {
-                        this.curPageNum++;
-                        this.curPageId = new HeapPageId(this.HeapFileId, this.curPageNum);
-                        this.curPage = (HeapPage) Database.getBufferPool().getPage(this.tid, this.curPageId, Permissions.READ_WRITE);
-                        this.curIterator = this.curPage.iterator();
-                        return this.curIterator.next();
-                    }
-                } else {
-                    throw new NoSuchElementException();
-                }
-            } else {
-                throw new NoSuchElementException();
-            }
-        }
-
-        public void rewind() throws DbException, TransactionAbortedException {
-            if (this.opened) {
-                this.open();
-            } else {
-                throw new DbException("");
-            }
-        }
-
-        public void close() {
-            this.opened = false;
-        }
-
-        private boolean opened;
-        private int HeapFileId; 
-        private TransactionId tid;
-        private int curPageNum;
-        private PageId curPageId;
-        private HeapPage curPage;
-        private Iterator<Tuple> curIterator;
-        private int numPages; 
-    }
-
-    private class HeapFileIterator2 implements DbFileIterator {
+    private class HeapFileIterator implements DbFileIterator {
 
         TransactionId tid;
         int i;
-        boolean open;
+        boolean isOpen;
         Iterator<Tuple> iterator;
         
-        public HeapFileIterator2(TransactionId tid) {
+        public HeapFileIterator(TransactionId tid) {
             this.tid = tid;
         }
         
@@ -251,12 +176,12 @@ public class HeapFile implements DbFile {
             PageId pid = new HeapPageId(getId(), i);
             HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
             iterator = page.iterator();
-            open = true;
+            isOpen = true;
         }
 
         @Override
         public boolean hasNext() throws DbException, TransactionAbortedException {
-            if (!open)
+            if (!isOpen)
                 return false;
             while (!iterator.hasNext()) {
                 i++;
@@ -273,7 +198,7 @@ public class HeapFile implements DbFile {
 
         @Override
         public Tuple next() throws DbException, TransactionAbortedException, NoSuchElementException {
-            if (!open) {
+            if (!isOpen) {
                 throw new NoSuchElementException();
             } else {
                 return iterator.next();
@@ -288,7 +213,56 @@ public class HeapFile implements DbFile {
 
         @Override
         public void close() {
-            open = false;
+            isOpen = false;
+        }
+    }
+    
+    private class HeapFileIterator2 extends AbstractDbFileIterator {
+
+        TransactionId tid;
+        int i;
+        boolean isOpen;
+        Iterator<Tuple> iterator;
+        
+        public HeapFileIterator2(TransactionId tid) {
+            this.tid = tid;
+        }
+        
+        @Override
+        public void open() throws DbException, TransactionAbortedException {
+            i = 0;
+            PageId pid = new HeapPageId(getId(), i);
+            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
+            iterator = page.iterator();
+            isOpen = true;
+        }
+        
+        @Override
+        public void close() {
+            super.close();
+            isOpen = false;
+        }
+
+        @Override
+        public void rewind() throws DbException, TransactionAbortedException {
+            open();
+        }
+
+        @Override
+        protected Tuple readNext() throws DbException, TransactionAbortedException {
+            if (!isOpen) {
+                return null;
+            }
+            while (!iterator.hasNext()) {
+                i++;
+                if (i == numPages()) {
+                    return null;
+                }
+                PageId pid = new HeapPageId(getId(), i);
+                HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
+                iterator = page.iterator();
+            }
+            return iterator.next();
         }
     }
 }
