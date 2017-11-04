@@ -2,24 +2,36 @@ Documentation for Lab3
 Ashkan Bashardoust
 Yulong Liang
 
-***Join***
-Implemented by two nested loops.
+***Filter & Join***
+Predicates are really straightforward. Let the filter return true if meet the condition.
+Operators are also easy except the overrides of iterator, especially the fetchNext methods. Filter is as easy as doing an iteration throughout all the elements in child and return tuple which meets the filter in Predicate, while Join is using two nested loops through both the elements in child1 and child2 and returning the merged tuple one at a time.
 
 ***HashEquiJoin***
-First we hashed two children and compared elements of same fields in both hash tables.
-We faced an out of memory error in terminal (we passed the tests in Eclipse), then we used  one hash table for first child and then compared all of the second child tuples to corresponding field in hash table. We still couldn’t pass the test in terminal.
+First we hashed both the two children then compared elements of same fields in both hash tables and wrote the result down to an ArrayList. We faced an out of memory error in terminal (we passed the tests in Eclipse maybe because of the memory management of Eclipse).
 
-***HeapPage - Insert ***
-We insert the record in that particular page. If it’s full or tuple description is not the same as the record, we throw and exception.
+So we changed our strategy to using one hash table for first child then compared all of the second child tuples to corresponding field in hash table and return the merged tuple one at a time without store it in an ArrayList in the memory. This significantly reduced the memory usage and led to a pass.
 
-***HeapPage - Delete***
-We delete the slot in that particular page. If it’s already empty or it has different pageID, then we throw an exception.
+***Aggregates***
+The mechanism of Aggregates is not easy to understand.
 
-***HeapFile - Insert***
-We search through pages, and insert in the first page we find empty slot. If there is no such page, we create a new page.
+IntegerAggregator typically has two methods: mergeTupleIntoGroup is to read the next tuple and calculate and store the aggregate values so far and iterator is to return an iterator of the result. After calling mergeTupleIntoGroup for every elements, the iterator method will be called to return the result tuples. StringAggregator is much simpler than the IntegerAggregator which only has to calculate count value.
 
-***HeapFile - Delete***
-We find the page containing that record, and then we delete the record.
+Aggregate will execute a particular aggregating task, when it takes the aggregating table, group-by field, aggregating field and aggregating operator and then calls the corresponding methods in either IntegerAggregator or StringAggregator and finally return the result table once a line when its fetchNext method is called. 
+
+
+***HeapFile Mutability***
+Insertion into and Deletion from a heap file is complicated which requires the cooperation among HeapFile, HeapPage and BufferPool. 
+
+The insertion/deletion demand is triggered by Insert/Delete which will call the insertTuple/deleteTuple method in BufferPool. BufferPoll will then call the methods in HeapFile. HeapFile will finally call the methods in HeapPage and return a List of pages to the BufferPool to mark dirty.
+
+The insertTuple in HeapPage is just find an empty slot, insert and mark the slot as used while the deleteTuple is finding the corresponding slot, delete and mark as not used.
+
+The insertTuple in HeapFile is finding a page which as some empty slot or creating a new page if all the pages is full and then call insertTuple of HeapPage while the deleteTuple is just finding the corresponding page and then call deleteTuple of HeapPage. Both the two methods will return a List of one page to the BufferPool which is modified.
+
+The insertTuple/deleteTuple in BufferPool will call the methods in HeapFile and take care of the dirty pages.
+
+***Insert & Delete***
+The Insert/Delete operator is the trigger method of insertion/deletion. The key method is fetchNext where it takes an iterator of the tuples to be inserted/deleted and the call the corresponding method in BufferPool for every element the iterator returned and finally return a tuple containing the information on the number of tuples being inserted/deleted.
 
 Change to API:
 No changes.
