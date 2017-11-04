@@ -1,0 +1,38 @@
+Documentation for Lab3
+Ashkan Bashardoust
+Yulong Liang
+
+***Join***
+Implemented by two nested loops.
+
+***HashEquiJoin***
+First we hashed two children and compared elements of same fields in both hash tables.
+We faced an out of memory error in terminal (we passed the tests in Eclipse), then we used  one hash table for first child and then compared all of the second child tuples to corresponding field in hash table. We still couldn’t pass the test in terminal.
+
+***HeapPage - Insert ***
+We insert the record in that particular page. If it’s full or tuple description is not the same as the record, we throw and exception.
+
+***HeapPage - Delete***
+We delete the slot in that particular page. If it’s already empty or it has different pageID, then we throw an exception.
+
+***HeapFile - Insert***
+We search through pages, and insert in the first page we find empty slot. If there is no such page, we create a new page.
+
+***HeapFile - Delete***
+We find the page containing that record, and then we delete the record.
+
+Change to API:
+No changes.
+
+Missing or Incomplete Elements:
+None.
+
+Time Spent:
+Yulong: 7 days, 6 hours each in average = 42 hours
+Ashkan: 4 days, 6 hours each in average = 24 hours
+
+Confusing Parts:
+None.
+
+Bugs:
+None.
