@@ -104,7 +104,7 @@ public class TupleDesc implements Serializable {
         }
         numFields = typeAr.length;
         for(int i = 0; i < typeAr.length; i++) {
-            tdItems.add(new TDItem(typeAr[i], null));
+            tdItems.add(new TDItem(typeAr[i], ""));
         }
     }
 
