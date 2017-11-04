@@ -10,12 +10,14 @@ import java.util.*;
 public class Aggregate extends Operator {
 
     private DbIterator child;
-    private int afield;
-    private int gfield;
     private Aggregator.Op aop;
-    
     private Aggregator aggregator;
     private DbIterator result;
+
+    private int afield;
+    private int gfield;
+    private Type afieldtype;
+    private Type gfieldtype;
     
     private static final long serialVersionUID = 1L;
 
@@ -44,8 +46,8 @@ public class Aggregate extends Operator {
         this.gfield = gfield;
         this.aop = aop;
         
-        Type afieldtype = child.getTupleDesc().getFieldType(afield);
-        Type gfieldtype = null;
+        afieldtype = child.getTupleDesc().getFieldType(afield);
+        gfieldtype = null;
         if (gfield != -1) {
             gfieldtype = child.getTupleDesc().getFieldType(gfield); 
         }
@@ -55,18 +57,6 @@ public class Aggregate extends Operator {
         } else if (afieldtype.equals(Type.STRING_TYPE)) {
             this.aggregator = new StringAggregator(gfield, gfieldtype, afield, aop);
         }
-        try {
-            child.open();
-            while (child.hasNext()) {
-                aggregator.mergeTupleIntoGroup(child.next());
-            }
-            child.close();
-        } catch (DbException e) {
-            e.printStackTrace();
-        } catch (TransactionAbortedException e) {
-            e.printStackTrace();
-        }
-        result = aggregator.iterator();
     }
 
     /**
@@ -124,6 +114,12 @@ public class Aggregate extends Operator {
 	    TransactionAbortedException {
         // some code goes here
         super.open();
+        child.open();
+        while (child.hasNext()) {
+            aggregator.mergeTupleIntoGroup(child.next());
+        }
+        child.close();
+        result = aggregator.iterator();
         result.open();
     }
 
@@ -161,7 +157,16 @@ public class Aggregate extends Operator {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return result.getTupleDesc();
+        Type[] typeAr = new Type[2];
+        typeAr[0] = gfieldtype;
+        typeAr[1] = afieldtype;
+        
+        String[] fieldAr = new String[2];
+        fieldAr[0] = child.getTupleDesc().getFieldName(gfield);
+        fieldAr[1] = aop.toString() + "(" + child.getTupleDesc().getFieldName(afield) + ")";
+        
+        TupleDesc td = new TupleDesc(typeAr, fieldAr);
+        return td;
     }
 
     public void close() {
