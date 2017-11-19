@@ -1,9 +1,19 @@
 package simpledb;
 
+import simpledb.Aggregator.Op;
+
 /** A class to represent a fixed-width histogram over a single integer-based field.
  */
 public class IntHistogram {
 
+    private int buckets;
+    private int min;
+    private int max;
+    private int total;
+    private int buck_size;
+    
+    private int[] count;
+    
     /**
      * Create a new IntHistogram.
      * 
@@ -21,7 +31,13 @@ public class IntHistogram {
      * @param max The maximum integer value that will ever be passed to this class for histogramming
      */
     public IntHistogram(int buckets, int min, int max) {
-    	// some code goes here
+    	    // some code goes here
+        this.buckets = buckets;
+        this.min = min;
+        this.max = max;
+        count = new int[buckets+1];
+        this.total = 0;
+        this.buck_size = (int) Math.ceil((max - min + 1) / (double) buckets);
     }
 
     /**
@@ -29,7 +45,16 @@ public class IntHistogram {
      * @param v Value to add to the histogram
      */
     public void addValue(int v) {
-    	// some code goes here
+        // some code goes here
+        int index = (v - min) / buck_size;
+        count[index]++;
+        total++;
+    }
+    
+    public void setMinMax(int min, int max) {
+        // some code goes here
+        this.min = min;
+        this.max = max;
     }
 
     /**
@@ -43,8 +68,84 @@ public class IntHistogram {
      * @return Predicted selectivity of this particular operator and value
      */
     public double estimateSelectivity(Predicate.Op op, int v) {
-
-    	// some code goes here
+    	    // some code goes here
+        
+        if(v < min) {
+            if(op.equals(Predicate.Op.EQUALS)) {
+                return 0.0;
+            }
+            if(op.equals(Predicate.Op.NOT_EQUALS)) {
+                return 1.0;
+            }
+            if(op.equals(Predicate.Op.GREATER_THAN)) {
+                return 1.0;      
+            }
+            if(op.equals(Predicate.Op.GREATER_THAN_OR_EQ)) {
+                return 1.0; 
+            }
+            if(op.equals(Predicate.Op.LESS_THAN)) {
+                return 0.0;
+            }
+            if(op.equals(Predicate.Op.LESS_THAN_OR_EQ)) {
+                return 0.0;
+            }
+        }
+        
+        if(v > max) {
+            if(op.equals(Predicate.Op.EQUALS)) {
+                return 0.0;
+            }
+            if(op.equals(Predicate.Op.NOT_EQUALS)) {
+                return 1.0;
+            }
+            if(op.equals(Predicate.Op.GREATER_THAN)) {
+                return 0.0;      
+            }
+            if(op.equals(Predicate.Op.GREATER_THAN_OR_EQ)) {
+                return 0.0; 
+            }
+            if(op.equals(Predicate.Op.LESS_THAN)) {
+                return 1.0;
+            }
+            if(op.equals(Predicate.Op.LESS_THAN_OR_EQ)) {
+                return 1.0;
+            }
+        }
+        
+        int index = (v - min) / buck_size;
+        double ans = (count[index] / (double) (buck_size));
+        if(op.equals(Predicate.Op.EQUALS)) {
+            return ans / total;
+        }
+        if(op.equals(Predicate.Op.NOT_EQUALS)) {
+            return 1 - (ans / total);
+        }
+        if(op.equals(Predicate.Op.GREATER_THAN)) {
+            ans *= buck_size - v + min + (index * buck_size) - 1;
+            for(int i = index + 1; i < count.length; i++)
+                ans += count[i];
+            return ans / total;
+        }
+        if(op.equals(Predicate.Op.GREATER_THAN_OR_EQ)) {
+            if(v + 1 != min + ((index+1) * buck_size))
+                ans *= buck_size - v + min + (index * buck_size);
+            for(int i = index + 1; i < count.length; i++)
+                ans += count[i];
+            return ans / total;
+        }
+        if(op.equals(Predicate.Op.LESS_THAN)) {
+            ans *= v - min - (index*buck_size);
+            for(int i = 0; i < index; i++)
+                ans += count[i];
+            return ans / total;
+        }
+        if(op.equals(Predicate.Op.LESS_THAN_OR_EQ)) {
+            if(v != min + (index * buck_size))
+                ans *= v - min - (index*buck_size) + 1;
+            for(int i = 0; i < index; i++)
+                ans += count[i];
+            return ans / total;
+        }
         return -1.0;
     }
     
@@ -67,6 +168,13 @@ public class IntHistogram {
      */
     public String toString() {
         // some code goes here
-        return null;
+        String s = "";
+        for(int i = 0; i < this.count.length; i++) {
+            s += i + ": " + count[i] + "\n";
+        }
+        s += "total: " + total + "\n";
+        s += "bucket_size: " + buck_size + "\n";
+        s += "buckets: " + buckets + "\n";
+        return s;
     }
 }
