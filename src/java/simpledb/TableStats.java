@@ -165,9 +165,9 @@ public class TableStats {
     public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
         // some code goes here
         Type type = Database.getCatalog().getTupleDesc(tableid).getFieldType(field);
-        IntHistogram intHistogram = new IntHistogram(NUM_HIST_BINS, 0, 0);
 
         if (type.equals(Type.INT_TYPE)) {
+            IntHistogram intHistogram = new IntHistogram(NUM_HIST_BINS, 0, 0);
             boolean first = true;
             int min = 0;
             int max = 0;
@@ -199,6 +199,18 @@ public class TableStats {
             return intHistogram.estimateSelectivity(op, intConstant.getValue());
         } else if (type.equals(Type.STRING_TYPE)) {
             StringHistogram stringHistogram = new StringHistogram(NUM_HIST_BINS);
+            DbFileIterator iterator = file.iterator(new TransactionId());
+            try {
+                iterator.open();
+                while (iterator.hasNext()) {
+                    Tuple tuple = iterator.next();
+                    StringField stringField = (StringField) tuple.getField(field);
+                    String value = stringField.getValue();
+                    stringHistogram.addValue(value);
+                }
+            } catch (DbException | TransactionAbortedException e) {
+                e.printStackTrace();
+            }
             StringField stringConstant = (StringField) constant;
             return stringHistogram.estimateSelectivity(op, stringConstant.getValue());
         }
