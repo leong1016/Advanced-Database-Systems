@@ -1,5 +1,6 @@
 package simpledb;
 
+import java.io.Console;
 import java.util.*;
 
 import javax.swing.*;
@@ -111,7 +112,8 @@ public class JoinOptimizer {
             // HINT: You may need to use the variable "j" if you implemented
             // a join algorithm that's more complicated than a basic
             // nested-loops join.
-            return -1.0;
+            double value = cost1 + card1 * cost2 + card1 * card2;
+            return value;
         }
     }
 
@@ -157,7 +159,21 @@ public class JoinOptimizer {
             Map<String, Integer> tableAliasToId) {
         int card = 1;
         // some code goes here
-        return card <= 0 ? 1 : card;
+        if (joinOp.equals(Predicate.Op.EQUALS)) {
+            if (t1pkey) {
+                if (t2pkey) 
+                    return card1 < card2 ? card1 : card2;
+                else
+                    return card2;
+            } else {
+                if (t2pkey)
+                    return card1;
+                else
+                    return card1 > card2 ? card1 : card2;
+            }
+        } else {
+            return (int) (0.3 * card1 * card2);
+        }
     }
 
     /**
@@ -218,10 +234,26 @@ public class JoinOptimizer {
             HashMap<String, Double> filterSelectivities, boolean explain)
             throws ParsingException {
         //Not necessary for labs 1--3
-
         // some code goes here
         //Replace the following
-        return joins;
+        PlanCache bestPlan = new PlanCache();
+        for (int i = 1; i <= joins.size(); i++) {
+            Set<Set<LogicalJoinNode>> largeSubset = enumerateSubsets(joins, i);
+            for (Set<LogicalJoinNode> set : largeSubset) {
+                bestPlan.addPlan(set, Double.POSITIVE_INFINITY, Integer.MAX_VALUE, null);
+                for (LogicalJoinNode node : set) {
+                    Set<LogicalJoinNode> temp = new HashSet<>(set);
+                    temp.remove(set);
+                    CostCard costCard = computeCostAndCardOfSubplan(stats, filterSelectivities, node, temp, bestPlan.getCost(set), bestPlan);
+                    if (costCard != null && costCard.cost < bestPlan.getCost(set))
+                        bestPlan.addPlan(set, costCard.cost, costCard.card, costCard.plan);
+                }
+            }
+        }
+        if (explain) {
+            printJoins(joins, bestPlan, stats, filterSelectivities);
+        }
+        return bestPlan.getOrder(new HashSet<>(joins));
     }
 
     // ===================== Private Methods =================================
