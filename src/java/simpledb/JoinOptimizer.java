@@ -1,6 +1,5 @@
 package simpledb;
 
-import java.io.Console;
 import java.util.*;
 
 import javax.swing.*;
@@ -159,6 +158,8 @@ public class JoinOptimizer {
             Map<String, Integer> tableAliasToId) {
         int card = 1;
         // some code goes here
+        card1 = ((card1 + 50) / 100) * 100;
+        card2 = ((card2 + 50) / 100) * 100;
         if (joinOp.equals(Predicate.Op.EQUALS)) {
             if (t1pkey) {
                 if (t2pkey) 
@@ -172,6 +173,8 @@ public class JoinOptimizer {
                     return card1 > card2 ? card1 : card2;
             }
         } else {
+//            if(card1 > 0.3 * card1 * card2)
+//                return card1;
             return (int) (0.3 * card1 * card2);
         }
     }
