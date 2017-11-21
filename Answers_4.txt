@@ -3,7 +3,7 @@ Ashkan Bashardoust
 Yulong Liang
 
 ***IntHistogram***
-We store the total number of fields in an integer and the distribution in an array. When addValue method is called, we increment the count of the corresponding bucket by one. The method estimateSelectivity is the most important one. We calculate the selectivity of EQUALS, NOT_EQUALS, GREATER_THAN, GREATER_THAN_OR_EQ, LESS_THAN, LESS_THAN_OR_EQ. The overall idea is the size of buckets divided by total size.
+We store the total number of fields in an integer and the distribution in an array. When addValue method is called, we increment the count of the corresponding bucket by one. The method estimateSelectivity is the most important one. We calculate the selectivity of EQUALS, NOT_EQUALS, GREATER_THAN, GREATER_THAN_OR_EQ, LESS_THAN, LESS_THAN_OR_EQ. The overall idea is the size of buckets divided by total size. In the special cases that the query value is not in the range we return either 1 or 0, depending on the inputs. In other cases first we identify the bucket that includes that value, then we estimate how much of the values are equal, greater or less than the value in that bucket. Then we may add number of elements in previous or next buckets (depending on the operation).
 
 ***TableStats***
 This class keeps a series of static variables and methods that take care of the statistics for all the tables of the database, while the non-static methods take care of a corresponding table. In the constructor of the class, we calculate the total number of tuples of the table by iterate through the heap file and add up the number of tuples of each page. The most important method is estimateSelectivity. We firstly get the type of the field, which is either integer or string. For both of the condition, we iterate through all the tuples in the heap file storing the table and add then into the histogram. Then we call the estimateSelectivity method of histogram to get the selectivity and return it.
@@ -16,7 +16,7 @@ The method orderJoins is simply converting the pseudocode, calling the method en
 
 
 Change to API:
-The IntHistogram requires min and max to construct, so we add a setMinMax method to the class.
+The IntHistogram requires min and max to construct, and we needed to create it before knowing the min and max. In order to avoid another iteration, we added a setMinMax method to the class so we can set those values after creating the object.
 
 Missing or Incomplete Elements:
 None.
