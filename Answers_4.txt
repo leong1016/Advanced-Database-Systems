@@ -16,21 +16,17 @@ The method orderJoins is simply converting the pseudocode, calling the method en
 
 
 Change to API:
-The IntHistogram requires min and max to construct
+The IntHistogram requires min and max to construct, so we add a setMinMax method to the class.
 
 Missing or Incomplete Elements:
 None.
 
 Time Spent:
-Yulong: 7 days, 6 hours each in average = 42 hours
-Ashkan: 4 days, 6 hours each in average = 24 hours
+Yulong: 3 days, 6 hours each in average = 18 hours
+Ashkan: 3 days, 6 hours each in average = 18 hours
 
 Confusing Parts:
-1. The fetchNext method when using the abstract iterator cannot call itself which is confusing.
-2. In insertTuple and deleteTuple methods in BufferPool, we are not sure whether the corresponding page is in the buffer pool or not and when we should put the pages which HeapFile returned into the buffer pool.
-3. The SQL query is really slow which might be solved after the query optimizer is implemented as the TA instructs.
-
-We will leave the first two question to the TA hours. Thank you!
+None.
 
 Bugs:
 None.

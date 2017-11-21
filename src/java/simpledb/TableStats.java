@@ -3,6 +3,7 @@ package simpledb;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -94,13 +95,21 @@ public class TableStats {
         this.tableid = tableid;
         this.ioCostPerPage = ioCostPerPage;
         this.file = (HeapFile) Database.getCatalog().getDatabaseFile(tableid);
+        this.totalTuples = 0;
         DbFileIterator iterator = file.iterator(new TransactionId());
-        int count = 0;
-        for (int i = 0; i < file.numPages(); i++) {
-            HeapPage page = (HeapPage) file.readPage(new HeapPageId(tableid, i));
-            count += page.tuples.length;
+        try {
+            iterator.open();
+            while (iterator.hasNext()) {
+                iterator.next();
+                this.totalTuples++;
+            }
+        } catch (NoSuchElementException e) {
+            e.printStackTrace();
+        } catch (DbException e) {
+            e.printStackTrace();
+        } catch (TransactionAbortedException e) {
+            e.printStackTrace();
         }
-        this.totalTuples = count;
     }
 
     /**
@@ -168,9 +177,8 @@ public class TableStats {
 
         if (type.equals(Type.INT_TYPE)) {
             IntHistogram intHistogram = new IntHistogram(NUM_HIST_BINS, 0, 0);
-            boolean first = true;
-            int min = 0;
-            int max = 0;
+            int min = Integer.MAX_VALUE;
+            int max = Integer.MIN_VALUE;
             DbFileIterator iterator = file.iterator(new TransactionId());
             try {
                 iterator.open();
@@ -179,16 +187,10 @@ public class TableStats {
                     IntField intField = (IntField) tuple.getField(field);
                     int value = intField.getValue();
                     intHistogram.addValue(value);
-                    if(first == false) {
-                        if(min > value)
-                            min = value;
-                        if(max < value)
-                            max = value;
-                    } else {
+                    if(min > value)
                         min = value;
+                    if(max < value)
                         max = value;
-                        first = false;
-                    }
                 }
             } catch (DbException | TransactionAbortedException e) {
                 e.printStackTrace();
