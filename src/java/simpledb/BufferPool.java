@@ -1,9 +1,13 @@
 package simpledb;
 
 import java.io.*;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -19,21 +23,10 @@ import java.util.List;
 public class BufferPool {
     
     private int maxPages;
-    private HashMap<PageId, BPItem> pool;
-    private List<PageId> evictionList = new LinkedList<>();
-    
-    
-    private class BPItem {
-        Page page;
-        TransactionId tid;
-        Permissions perm;
-        
-        public BPItem(Page page, TransactionId tid, Permissions perm) {
-            this.page = page;
-            this.tid = tid;
-            this.perm = perm;
-        }
-    }
+    private HashMap<PageId, Page> pool;
+    private LockManager manager;
+    private Locker locker;
+    private List<PageId> evictionList;
     
     /** Bytes per page, including header. */
     private static final int PAGE_SIZE = 4096;
@@ -44,6 +37,91 @@ public class BufferPool {
     other classes. BufferPool should use the numPages argument to the
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
+    
+    private class LockManager {
+        
+        private ConcurrentHashMap<PageId, HashSet<TransactionId>> share;
+        private ConcurrentHashMap<PageId, TransactionId> exclusive;
+        
+        public LockManager() {
+            share = new ConcurrentHashMap<>();
+            exclusive = new ConcurrentHashMap<>();
+        }
+        
+        public void acquireLock(PageId pid, TransactionId tid, Permissions perm) {
+            long start = System.currentTimeMillis();
+            boolean isSuccess = false;
+            while (!isSuccess) {
+                try {
+                    long end = System.currentTimeMillis();
+                    if (end - start > 2020) {
+                        System.out.println("Abort: waiting for Tid = " + tid.getId() + ", Pid = " + pid.toString() + ", Perm = " + perm.toString());
+                    }
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                if (perm.equals(Permissions.READ_ONLY)) {
+                    isSuccess = acquireShareLock(pid, tid);
+                } else if (perm.equals(Permissions.READ_WRITE)) {
+                    isSuccess = acquireExclusiveLock(pid, tid);
+                }
+            }
+        }
+        
+        public boolean acquireShareLock(PageId pid, TransactionId tid) {
+            if (exclusive.containsKey(pid)) {
+                return false;
+            } else if (share.containsKey(pid)) {
+                HashSet<TransactionId> tids = share.get(pid);
+                tids.add(tid);
+                share.put(pid, tids);
+                return true;
+            } else {
+                HashSet<TransactionId> tids = new HashSet<>();
+                tids.add(tid);
+                share.put(pid, tids);
+                return true;
+            }
+        }
+        
+        public boolean acquireExclusiveLock(PageId pid, TransactionId tid) {
+            if (share.containsKey(pid) || exclusive.containsKey(pid)) {
+                return false;
+            } else {
+                exclusive.put(pid, tid);
+                return true;
+            }
+        }
+        
+        public void releaseLock(PageId pid, TransactionId tid) {
+            if (share.containsKey(pid)) {
+                HashSet<TransactionId> tids = share.get(pid);
+                tids.remove(tid);
+                share.put(pid, tids);
+            }
+            if (exclusive.containsKey(pid)) {
+                exclusive.remove(pid);
+            }
+        }
+        
+        public void releaseLock(TransactionId tid) {
+            
+        }
+        
+        public boolean holdsLock(TransactionId tid, PageId pid) {
+            if (exclusive.get(pid).equals(tid)) {
+                return true;
+            }
+            HashSet<TransactionId> tids = share.get(pid);
+            for (TransactionId transactionId : tids) {
+                if (transactionId.equals(tid)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -54,6 +132,9 @@ public class BufferPool {
         // some code goes here
         maxPages = numPages;
         pool = new HashMap<>(maxPages);
+        manager = new LockManager();
+        locker = new Locker();
+        evictionList = new LinkedList<>();
     }
     
     public static int getPageSize() {
@@ -88,24 +169,20 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
+//        manager.acquireLock(pid, tid, perm);
+        locker.acquireLock(tid, pid, perm);
+        
         if (pool.containsKey(pid)) {
-            BPItem item = pool.get(pid);
             evictionList.remove(pid);
             evictionList.add(pid);
-            if (item.tid == null) {
-                pool.put(pid, new BPItem(item.page, tid, perm));
-                return item.page;
-            } else {
-                //do something regarding transaction id for future labs
-                return item.page;
-            }
+            return pool.get(pid);
         } else {
         		if (pool.size() == maxPages) {
         			evictPage();
         		}
         		DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
         		Page page = dbFile.readPage(pid);
-        		pool.put(pid, new BPItem(page, tid, perm));
+        		pool.put(pid, page);
         		evictionList.add(pid);
         		return page;
         }
@@ -123,6 +200,7 @@ public class BufferPool {
     public  void releasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
+        locker.releaseLock(tid, pid);
     }
 
     /**
@@ -133,13 +211,14 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for lab1|lab2
-        return false;
+        return locker.holdsLock(tid, p);
     }
 
     /**
@@ -153,6 +232,45 @@ public class BufferPool {
         throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        // Check that the transaction has not already been committed.
+        if (this.locker.getPages(tid) == null) {
+            return;
+        }
+
+        if (commit) {
+            Iterator<PageId> it = this.locker.getPages(tid);
+            while (it.hasNext()) {
+                PageId pid = it.next();
+                Page p = this.pool.get(pid);
+                if (p != null) {
+                    // Potentially add a check to ensure that all flushed pages are
+                    // correctly marked for the given transaction.
+                    this.flushPage(pid);
+                    
+                    // Use current page contents as the before-image
+                    // for the next transaction that modifies this page.
+                    this.pool.get(pid).setBeforeImage();
+                }
+            }
+        } else {
+            Iterator<PageId> it = this.locker.getPages(tid);
+            while (it.hasNext()) {
+                PageId pid = it.next();
+                if (this.pool.containsKey(pid)) {
+                    Page p = this.pool.get(pid);
+    
+                    // It should be enough to check that isPageDirty returns a
+                    // non-null value, but this ensures that it was dirtied by
+                    // the correct transaction.
+                    if (p.isDirty() != null &&
+                        p.isDirty().equals(tid)) {
+                        this.pool.put(pid, p.getBeforeImage());
+                    }
+                }
+            }
+        }
+
+        this.locker.releaseAllLocks(tid);
     }
 
     /**
@@ -179,8 +297,7 @@ public class BufferPool {
         for (Page page : pages) {
 //            getPage(tid, page.getId(), Permissions.READ_WRITE);
             page.markDirty(true, tid);
-            BPItem item = new BPItem(page, tid, Permissions.READ_WRITE);
-            pool.put(page.getId(), item);
+            pool.put(page.getId(), page);
         }
     }
 
@@ -207,8 +324,7 @@ public class BufferPool {
     		for (Page page : pages) {
 //			getPage(tid, page.getId(), Permissions.READ_WRITE);
 			page.markDirty(true, tid);
-			BPItem item = new BPItem(page, tid, Permissions.READ_WRITE);
-            pool.put(page.getId(), item);
+            pool.put(page.getId(), page);
 		}
     }
 
@@ -220,8 +336,7 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for lab1
-        for (BPItem item : pool.values()) {
-            Page page = item.page;
+        for (Page page : pool.values()) {
             if (page.isDirty() != null) {
                 flushPage(page.getId());
             }
@@ -249,8 +364,7 @@ public class BufferPool {
     private synchronized  void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
-        BPItem item = pool.get(pid);
-        Page page = item.page;
+        Page page = pool.get(pid);
         DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
         dbFile.writePage(page);
         page.markDirty(false, null);
@@ -272,7 +386,7 @@ public class BufferPool {
     	// not necessary for lab1
 
     		int i = 0;
-    		while (pool.get(evictionList.get(i)).page.isDirty() != null) {
+    		while (pool.get(evictionList.get(i)).isDirty() != null) {
     			i++;
     		}
     		try {
