@@ -1,10 +1,8 @@
 package simpledb;
 
 import java.io.*;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -21,42 +19,46 @@ import java.util.concurrent.ConcurrentHashMap;
  * @Threadsafe, all fields are final
  */
 public class BufferPool {
-    
+
     private int maxPages;
     private HashMap<PageId, Page> pool;
     private LockManager manager;
     private Locker locker;
     private List<PageId> evictionList;
-    
+
     /** Bytes per page, including header. */
     private static final int PAGE_SIZE = 4096;
 
     private static int pageSize = PAGE_SIZE;
-    
+
     /** Default number of pages passed to the constructor. This is used by
     other classes. BufferPool should use the numPages argument to the
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
-    
+
     private class LockManager {
-        
+
         private ConcurrentHashMap<PageId, HashSet<TransactionId>> share;
         private ConcurrentHashMap<PageId, TransactionId> exclusive;
-        
+        private ConcurrentHashMap<TransactionId, HashSet<PageId>> reverseShare;
+        private ConcurrentHashMap<TransactionId, HashSet<PageId>> reverseExclusive;
+
         public LockManager() {
             share = new ConcurrentHashMap<>();
             exclusive = new ConcurrentHashMap<>();
+            reverseShare = new ConcurrentHashMap<>();
+            reverseExclusive = new ConcurrentHashMap<>();
         }
-        
+
         public void acquireLock(PageId pid, TransactionId tid, Permissions perm) {
-            long start = System.currentTimeMillis();
             boolean isSuccess = false;
+            if (perm.equals(Permissions.READ_ONLY)) {
+                isSuccess = acquireShareLock(pid, tid);
+            } else if (perm.equals(Permissions.READ_WRITE)) {
+                isSuccess = acquireExclusiveLock(pid, tid);
+            }
             while (!isSuccess) {
                 try {
-                    long end = System.currentTimeMillis();
-                    if (end - start > 2020) {
-                        System.out.println("Abort: waiting for Tid = " + tid.getId() + ", Pid = " + pid.toString() + ", Perm = " + perm.toString());
-                    }
                     Thread.sleep(10);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
@@ -68,58 +70,154 @@ public class BufferPool {
                 }
             }
         }
-        
+
         public boolean acquireShareLock(PageId pid, TransactionId tid) {
+            if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
+                return true;
+            }
+            if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
+                return true;
+            }
+
             if (exclusive.containsKey(pid)) {
                 return false;
-            } else if (share.containsKey(pid)) {
-                HashSet<TransactionId> tids = share.get(pid);
-                tids.add(tid);
-                share.put(pid, tids);
-                return true;
             } else {
-                HashSet<TransactionId> tids = new HashSet<>();
-                tids.add(tid);
-                share.put(pid, tids);
+                if (share.containsKey(pid)) {
+                    HashSet<TransactionId> tids = share.get(pid);
+                    tids.add(tid);
+                    share.put(pid, tids);
+                } else {
+                    HashSet<TransactionId> tids = new HashSet<>();
+                    tids.add(tid);
+                    share.put(pid, tids);
+                }
+                if (reverseShare.containsKey(tid)) {
+                    HashSet<PageId> pids = reverseShare.get(tid);
+                    pids.add(pid);
+                    reverseShare.put(tid, pids);
+                } else {
+                    HashSet<PageId> pids = new HashSet<>();
+                    pids.add(pid);
+                    reverseShare.put(tid, pids);
+                }
                 return true;
             }
         }
-        
+
         public boolean acquireExclusiveLock(PageId pid, TransactionId tid) {
+            if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
+                return true;
+            }
+            if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
+                HashSet<TransactionId> tids = share.get(pid);
+                tids.remove(tid);
+                if (tids.size() == 0) {
+                    share.remove(pid);
+                } else {
+                    share.put(pid, tids);
+                }
+                HashSet<PageId> pids = reverseShare.get(tid);
+                pids.remove(pid);
+                if (pids.size() == 0) {
+                    reverseShare.remove(tid);
+                } else {
+                    reverseShare.put(tid, pids);
+                }
+            }
+
             if (share.containsKey(pid) || exclusive.containsKey(pid)) {
                 return false;
             } else {
                 exclusive.put(pid, tid);
+                if (reverseExclusive.containsKey(tid)) {
+                    HashSet<PageId> pids = reverseExclusive.get(tid);
+                    pids.add(pid);
+                    reverseExclusive.put(tid, pids);
+                } else {
+                    HashSet<PageId> pids = new HashSet<>();
+                    pids.add(pid);
+                    reverseExclusive.put(tid, pids);
+                }
                 return true;
             }
         }
-        
+
         public void releaseLock(PageId pid, TransactionId tid) {
             if (share.containsKey(pid)) {
                 HashSet<TransactionId> tids = share.get(pid);
                 tids.remove(tid);
-                share.put(pid, tids);
+                if (tids.size() == 0) {
+                    share.remove(pid);
+                } else {
+                    share.put(pid, tids);
+                }
             }
             if (exclusive.containsKey(pid)) {
                 exclusive.remove(pid);
             }
-        }
-        
-        public void releaseLock(TransactionId tid) {
-            
-        }
-        
-        public boolean holdsLock(TransactionId tid, PageId pid) {
-            if (exclusive.get(pid).equals(tid)) {
-                return true;
-            }
-            HashSet<TransactionId> tids = share.get(pid);
-            for (TransactionId transactionId : tids) {
-                if (transactionId.equals(tid)) {
-                    return true;
+            if (reverseShare.containsKey(tid)) {
+                HashSet<PageId> pids = reverseShare.get(tid);
+                pids.remove(pid);
+                if (pids.size() == 0) {
+                    reverseShare.remove(tid);
+                } else {
+                    reverseShare.put(tid, pids);
                 }
             }
+            if (reverseExclusive.containsKey(tid)) {
+                HashSet<PageId> pids = reverseExclusive.get(tid);
+                pids.remove(pid);
+                if (pids.size() == 0) {
+                    reverseExclusive.remove(tid);
+                } else {
+                    reverseExclusive.put(tid, pids);
+                }
+            }
+        }
+
+        public void releaseAllLock(TransactionId tid) {
+            if (reverseShare.containsKey(tid)) {
+                HashSet<PageId> pids = reverseShare.get(tid);
+                for (PageId pid : pids) {
+                    if (share.containsKey(pid)) {
+                        HashSet<TransactionId> tids = share.get(pid);
+                        tids.remove(tid);
+                        if (tids.size() == 0) {
+                            share.remove(pid);
+                        } else {
+                            share.put(pid, tids);
+                        }
+                    }
+                }
+                reverseShare.remove(tid);
+            }
+            if (reverseExclusive.containsKey(tid)) {
+                HashSet<PageId> pids = reverseExclusive.get(tid);
+                for (PageId pid : pids) {
+                    if (exclusive.containsKey(pid)) {
+                        exclusive.remove(pid);
+                    }
+                }
+                reverseExclusive.remove(tid);
+            }
+        }
+
+        public boolean holdsLock(TransactionId tid, PageId pid) {
+            if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
+                return true;
+            }
+            if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
+                return true;
+            }
             return false;
+        }
+        
+        public HashSet<PageId> exclusivePages(TransactionId tid) {
+            if (reverseExclusive.containsKey(tid)) {
+                return reverseExclusive.get(tid);
+            } else {
+                return null;
+            }
         }
     }
 
@@ -136,19 +234,19 @@ public class BufferPool {
         locker = new Locker();
         evictionList = new LinkedList<>();
     }
-    
+
     public static int getPageSize() {
-      return pageSize;
+        return pageSize;
     }
-    
+
     // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
     public static void setPageSize(int pageSize) {
-    	BufferPool.pageSize = pageSize;
+        BufferPool.pageSize = pageSize;
     }
-    
+
     // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
     public static void resetPageSize() {
-    	BufferPool.pageSize = PAGE_SIZE;
+        BufferPool.pageSize = PAGE_SIZE;
     }
 
     /**
@@ -167,24 +265,23 @@ public class BufferPool {
      * @param perm the requested permissions on the page
      */
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
-        throws TransactionAbortedException, DbException {
+            throws TransactionAbortedException, DbException {
         // some code goes here
-//        manager.acquireLock(pid, tid, perm);
-        locker.acquireLock(tid, pid, perm);
-        
+        manager.acquireLock(pid, tid, perm);
+        //        locker.acquireLock(tid, pid, perm);
         if (pool.containsKey(pid)) {
             evictionList.remove(pid);
             evictionList.add(pid);
             return pool.get(pid);
         } else {
-        		if (pool.size() == maxPages) {
-        			evictPage();
-        		}
-        		DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
-        		Page page = dbFile.readPage(pid);
-        		pool.put(pid, page);
-        		evictionList.add(pid);
-        		return page;
+            if (pool.size() == maxPages) {
+                evictPage();
+            }
+            DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
+            Page page = dbFile.readPage(pid);
+            pool.put(pid, page);
+            evictionList.add(pid);
+            return page;
         }
     }
 
@@ -200,7 +297,7 @@ public class BufferPool {
     public  void releasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
-        locker.releaseLock(tid, pid);
+        manager.releaseLock(pid, tid);
     }
 
     /**
@@ -218,7 +315,7 @@ public class BufferPool {
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for lab1|lab2
-        return locker.holdsLock(tid, p);
+        return manager.holdsLock(tid, p);
     }
 
     /**
@@ -229,48 +326,15 @@ public class BufferPool {
      * @param commit a flag indicating whether we should commit or abort
      */
     public void transactionComplete(TransactionId tid, boolean commit)
-        throws IOException {
+            throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
-        // Check that the transaction has not already been committed.
-        if (this.locker.getPages(tid) == null) {
-            return;
-        }
-
         if (commit) {
-            Iterator<PageId> it = this.locker.getPages(tid);
-            while (it.hasNext()) {
-                PageId pid = it.next();
-                Page p = this.pool.get(pid);
-                if (p != null) {
-                    // Potentially add a check to ensure that all flushed pages are
-                    // correctly marked for the given transaction.
-                    this.flushPage(pid);
-                    
-                    // Use current page contents as the before-image
-                    // for the next transaction that modifies this page.
-                    this.pool.get(pid).setBeforeImage();
-                }
-            }
+            flushPages(tid);
         } else {
-            Iterator<PageId> it = this.locker.getPages(tid);
-            while (it.hasNext()) {
-                PageId pid = it.next();
-                if (this.pool.containsKey(pid)) {
-                    Page p = this.pool.get(pid);
-    
-                    // It should be enough to check that isPageDirty returns a
-                    // non-null value, but this ensures that it was dirtied by
-                    // the correct transaction.
-                    if (p.isDirty() != null &&
-                        p.isDirty().equals(tid)) {
-                        this.pool.put(pid, p.getBeforeImage());
-                    }
-                }
-            }
+            discardPages(tid);
         }
-
-        this.locker.releaseAllLocks(tid);
+        manager.releaseAllLock(tid);
     }
 
     /**
@@ -289,13 +353,13 @@ public class BufferPool {
      * @param t the tuple to add
      */
     public void insertTuple(TransactionId tid, int tableId, Tuple t)
-        throws DbException, IOException, TransactionAbortedException {
+            throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
         DbFile file = Database.getCatalog().getDatabaseFile(tableId);
         List<Page> pages = file.insertTuple(tid, t);
         for (Page page : pages) {
-//            getPage(tid, page.getId(), Permissions.READ_WRITE);
+            //            getPage(tid, page.getId(), Permissions.READ_WRITE);
             page.markDirty(true, tid);
             pool.put(page.getId(), page);
         }
@@ -315,17 +379,17 @@ public class BufferPool {
      * @param t the tuple to delete
      */
     public  void deleteTuple(TransactionId tid, Tuple t)
-        throws DbException, IOException, TransactionAbortedException {
+            throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
-    		int tableid = t.getRecordId().getPageId().getTableId();
-    		DbFile file = Database.getCatalog().getDatabaseFile(tableid);
-    		List<Page> pages = file.deleteTuple(tid, t);
-    		for (Page page : pages) {
-//			getPage(tid, page.getId(), Permissions.READ_WRITE);
-			page.markDirty(true, tid);
+        int tableid = t.getRecordId().getPageId().getTableId();
+        DbFile file = Database.getCatalog().getDatabaseFile(tableid);
+        List<Page> pages = file.deleteTuple(tid, t);
+        for (Page page : pages) {
+            //			getPage(tid, page.getId(), Permissions.READ_WRITE);
+            page.markDirty(true, tid);
             pool.put(page.getId(), page);
-		}
+        }
     }
 
     /**
@@ -347,14 +411,25 @@ public class BufferPool {
         Needed by the recovery manager to ensure that the
         buffer pool doesn't keep a rolled back page in its
         cache.
-        
+
         Also used by B+ tree files to ensure that deleted pages
         are removed from the cache so they can be reused safely
-    */
+     */
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
         pool.remove(pid);
+    }
+    
+    public synchronized void discardPages(TransactionId tid) {
+        HashSet<PageId> pids = manager.exclusivePages(tid);
+        if (pids == null)
+            return;
+        for (PageId pid : pids) {
+            if (pool.get(pid).isDirty() != null) {
+                discardPage(pid);
+            }
+        }
     }
 
     /**
@@ -375,6 +450,14 @@ public class BufferPool {
     public synchronized  void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        HashSet<PageId> pids = manager.exclusivePages(tid);
+        if (pids == null)
+            return;
+        for (PageId pid : pids) {
+            if (pool.get(pid).isDirty() != null) {
+                flushPage(pid);
+            }
+        }
     }
 
     /**
@@ -382,31 +465,35 @@ public class BufferPool {
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
     private synchronized  void evictPage() throws DbException {
-    	// some code goes here
-    	// not necessary for lab1
+        // some code goes here
+        // not necessary for lab1
+        for (int i = 0; i < evictionList.size(); i++) {
+            PageId pid = evictionList.get(i);
+            if (!pool.containsKey(pid)) {
+                evictionList.remove(i);
+            } else if (pool.get(pid).isDirty() == null) {
+                try {
+                    flushPage(pid);
+                    discardPage(pid);
+                    evictionList.remove(i);
+                    return;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        throw new DbException("All the pages are dirty!");
 
-    		int i = 0;
-    		while (pool.get(evictionList.get(i)).isDirty() != null) {
-    			i++;
-    		}
-    		try {
-    			flushPage(evictionList.get(i));
-        		discardPage(evictionList.get(i));
-        		evictionList.remove(i);
-    		} catch (IOException e) {
-    			e.printStackTrace();
-    		}
-
-    	//    		PageId pid = evictionList.get(0);
-    	//    		evictionList.remove(0);
-    	//        if (pool.get(pid).page.isDirty() != null) {
-    	//            try {
-    	//                flushPage(pid);
-    	//            } catch (IOException e) {
-    	//                e.printStackTrace();
-    	//            }
-    	//        }
-    	//        discardPage(pid);
+        //    		PageId pid = evictionList.get(0);
+        //    		evictionList.remove(0);
+        //        if (pool.get(pid).page.isDirty() != null) {
+        //            try {
+        //                flushPage(pid);
+        //            } catch (IOException e) {
+        //                e.printStackTrace();
+        //            }
+        //        }
+        //        discardPage(pid);
     }
 
 }
