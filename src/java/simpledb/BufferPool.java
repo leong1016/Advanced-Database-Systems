@@ -423,9 +423,11 @@ public class BufferPool {
     
     public synchronized void discardPages(TransactionId tid) {
         HashSet<PageId> pids = manager.exclusivePages(tid);
+        System.out.println(pids.toString());
         if (pids == null)
             return;
         for (PageId pid : pids) {
+            System.out.println(pool.get(pid).toString());
             if (pool.get(pid).isDirty() != null) {
                 discardPage(pid);
             }

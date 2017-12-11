@@ -120,9 +120,12 @@ public class HeapFile implements DbFile {
         ArrayList<Page> list = new ArrayList<>();
         for (i = 0; i < numPages(); i++) {
             PageId pid = new HeapPageId(tableid, i);
-            page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+            BufferPool bp = Database.getBufferPool();
+            page = (HeapPage) bp.getPage(tid, pid, Permissions.READ_WRITE);
             if (page.getNumEmptySlots() > 0)
                 break;
+            else
+                bp.releasePage(tid, pid);
         }
         if (i == numPages()) {
             HeapPageId pid = new HeapPageId(tableid, i);
