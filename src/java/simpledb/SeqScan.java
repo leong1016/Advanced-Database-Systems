@@ -34,10 +34,11 @@ public class SeqScan implements DbIterator {
      */
     public SeqScan(TransactionId tid, int tableid, String tableAlias) {
         // some code goes here
+        System.out.println("seqscan"+tid);
         this.tableid = tableid;
         this.tableAlias = tableAlias;
         file = (HeapFile) Database.getCatalog().getDatabaseFile(tableid);
-        iterator = file.iterator(new TransactionId());
+        iterator = file.iterator(tid);
     }
 
     /**
