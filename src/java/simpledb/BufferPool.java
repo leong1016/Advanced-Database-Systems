@@ -3,6 +3,7 @@ package simpledb;
 import java.io.*;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,36 +43,68 @@ public class BufferPool {
         private ConcurrentHashMap<PageId, TransactionId> exclusive;
         private ConcurrentHashMap<TransactionId, HashSet<PageId>> reverseShare;
         private ConcurrentHashMap<TransactionId, HashSet<PageId>> reverseExclusive;
+        private ConcurrentHashMap<TransactionId, HashSet<TransactionId>> dependencyMap;
 
         public LockManager() {
             share = new ConcurrentHashMap<>();
             exclusive = new ConcurrentHashMap<>();
             reverseShare = new ConcurrentHashMap<>();
             reverseExclusive = new ConcurrentHashMap<>();
+            dependencyMap = new ConcurrentHashMap<>();
         }
 
-        public void acquireLock(PageId pid, TransactionId tid, Permissions perm) {
-            boolean isSuccess = false;
-            if (perm.equals(Permissions.READ_ONLY)) {
-                isSuccess = acquireShareLock(pid, tid);
-            } else if (perm.equals(Permissions.READ_WRITE)) {
-                isSuccess = acquireExclusiveLock(pid, tid);
+        public void acquireLock(PageId pid, TransactionId tid, Permissions perm) throws TransactionAbortedException {
+
+            if (!(dependencyMap.containsKey(tid))) {
+                dependencyMap.put(tid, new HashSet<TransactionId>());
             }
-            while (!isSuccess) {
-                try {
-                    Thread.sleep(10);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+
+            long start = System.currentTimeMillis();
+
+            if (perm.equals(Permissions.READ_ONLY)) {
+                while (true) {
+                    if (acquireShareLock(pid, tid)) {
+                        dependencyMap.remove(tid);
+                        break;
+                    } else {
+                        if (exclusive.containsKey(pid)) {
+                            dependencyMap.get(tid).add(exclusive.get(pid));
+//                            if (containsCycle(tid)) {
+//                                throw new TransactionAbortedException();
+//                            }
+                        }
+                        long now = System.currentTimeMillis();
+                        if (now - start > 6000) {
+                            throw new TransactionAbortedException();
+                        }
+                    }
                 }
-                if (perm.equals(Permissions.READ_ONLY)) {
-                    isSuccess = acquireShareLock(pid, tid);
-                } else if (perm.equals(Permissions.READ_WRITE)) {
-                    isSuccess = acquireExclusiveLock(pid, tid);
+            } else if (perm.equals(Permissions.READ_WRITE)) {
+                while (true) {
+                    if (acquireExclusiveLock(pid, tid)) {
+                        dependencyMap.remove(tid);
+                        break;
+                    } else {
+                        if (exclusive.containsKey(pid)) {
+                            dependencyMap.get(tid).add(exclusive.get(pid));
+                            if (share.containsKey(pid)) {
+                                dependencyMap.get(tid).addAll(share.get(pid));
+                            }
+//                            if (this.containsCycle(tid)) {
+//                                throw new TransactionAbortedException();
+//                            }
+                        }
+                        long now = System.currentTimeMillis();
+                        if (now - start > 6000) {
+                            throw new TransactionAbortedException();
+                        }
+                    }
                 }
             }
         }
 
         public boolean acquireShareLock(PageId pid, TransactionId tid) {
+
             if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
                 return true;
             }
@@ -108,26 +141,26 @@ public class BufferPool {
             if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
                 return true;
             }
-            if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
-                HashSet<TransactionId> tids = share.get(pid);
-                tids.remove(tid);
-                if (tids.size() == 0) {
-                    share.remove(pid);
-                } else {
-                    share.put(pid, tids);
-                }
-                HashSet<PageId> pids = reverseShare.get(tid);
-                pids.remove(pid);
-                if (pids.size() == 0) {
-                    reverseShare.remove(tid);
-                } else {
-                    reverseShare.put(tid, pids);
-                }
-            }
-
-            if (share.containsKey(pid) || exclusive.containsKey(pid)) {
+            if (exclusive.containsKey(pid) || 
+                    share.containsKey(pid) && (share.get(pid).size() > 1 || !share.get(pid).contains(tid))) {
                 return false;
             } else {
+                if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
+                    HashSet<TransactionId> tids = share.get(pid);
+                    tids.remove(tid);
+                    if (tids.size() == 0) {
+                        share.remove(pid);
+                    } else {
+                        share.put(pid, tids);
+                    }
+                    HashSet<PageId> pids = reverseShare.get(tid);
+                    pids.remove(pid);
+                    if (pids.size() == 0) {
+                        reverseShare.remove(tid);
+                    } else {
+                        reverseShare.put(tid, pids);
+                    }
+                }
                 exclusive.put(pid, tid);
                 if (reverseExclusive.containsKey(tid)) {
                     HashSet<PageId> pids = reverseExclusive.get(tid);
@@ -211,13 +244,82 @@ public class BufferPool {
             }
             return false;
         }
-        
+
         public HashSet<PageId> exclusivePages(TransactionId tid) {
             if (reverseExclusive.containsKey(tid)) {
                 return reverseExclusive.get(tid);
             } else {
                 return null;
             }
+        }
+
+//        private boolean containsCycle(TransactionId tid) {
+//            HashSet<TransactionId> visited = new HashSet<TransactionId>();
+//            LinkedList<TransactionId> queue = new LinkedList<TransactionId>();
+//
+//            queue.add(tid);
+//
+//            while (!(queue.isEmpty())) {
+//                TransactionId cur = queue.remove();
+//                if (visited.contains(cur)) {
+//                    return true;
+//                }
+//
+//                visited.add(cur);
+//
+//                if (this.dependencyMap.containsKey(cur) && !(this.dependencyMap.get(cur).isEmpty())) {
+//                    Iterator<TransactionId> it = this.dependencyMap.get(cur).iterator();
+//                    while (it.hasNext()) {
+//                        queue.add(it.next());
+//                    }
+//                }
+//            }
+//            return false;
+//        }
+    }
+
+    private class Graph {
+        private HashMap<TransactionId, HashSet<TransactionId>> graph;
+        private HashMap<TransactionId, Boolean> isMarked;
+        private HashMap<TransactionId, Boolean> inStack;
+
+        public Graph() {
+            graph = new HashMap<>();
+            isMarked = new HashMap<>();
+            inStack = new HashMap<>();
+        }
+
+        public boolean hasCycle() {
+            for (TransactionId v : graph.keySet()) {
+                if (!isMarked.containsKey(v) || !isMarked.get(v)) {
+                    return dfs(v);
+                }
+            }
+            return false;
+        }
+
+        public boolean dfs(TransactionId v) {
+            inStack.put(v, true);
+            isMarked.put(v, true);
+            HashSet<TransactionId> adj = graph.get(v);
+            for (TransactionId w : adj) {
+                if (!isMarked.containsKey(w) || !isMarked.get(v))
+                    dfs(w);
+                else if (inStack.containsKey(w) && inStack.get(w))
+                    return true;
+                else
+                    continue;
+            }
+            inStack.remove(v);
+            return false;
+        }
+
+        public void addNode(TransactionId tid, HashSet<TransactionId> tids) {
+            graph.put(tid, tids);
+        }
+
+        public void removeNode(TransactionId tid) {
+            graph.remove(tid);
         }
     }
 
@@ -275,7 +377,7 @@ public class BufferPool {
             return pool.get(pid);
         } else {
             if (pool.size() == maxPages) {
-                evictPage();
+                evictPage(tid);
             }
             DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
             Page page = dbFile.readPage(pid);
@@ -332,6 +434,7 @@ public class BufferPool {
         if (commit) {
             flushPages(tid);
         } else {
+            System.out.println("abort");
             discardPages(tid);
         }
         manager.releaseAllLock(tid);
@@ -420,10 +523,9 @@ public class BufferPool {
         // not necessary for lab1
         pool.remove(pid);
     }
-    
+
     public synchronized void discardPages(TransactionId tid) {
         HashSet<PageId> pids = manager.exclusivePages(tid);
-        System.out.println(pids.toString());
         if (pids == null)
             return;
         for (PageId pid : pids) {
@@ -466,7 +568,7 @@ public class BufferPool {
      * Discards a page from the buffer pool.
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
-    private synchronized  void evictPage() throws DbException {
+    private synchronized  void evictPage(TransactionId tid) throws DbException {
         // some code goes here
         // not necessary for lab1
         for (int i = 0; i < evictionList.size(); i++) {
@@ -478,6 +580,7 @@ public class BufferPool {
                     flushPage(pid);
                     discardPage(pid);
                     evictionList.remove(i);
+                    releasePage(tid, pid);
                     return;
                 } catch (IOException e) {
                     e.printStackTrace();
