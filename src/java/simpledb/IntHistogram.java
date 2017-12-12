@@ -49,12 +49,6 @@ public class IntHistogram {
         total++;
     }
     
-    public void setMinMax(int min, int max) {
-        // some code goes here
-        this.min = min;
-        this.max = max;
-    }
-
     /**
      * Estimate the selectivity of a particular predicate and operand on this table.
      * 

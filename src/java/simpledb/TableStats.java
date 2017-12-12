@@ -25,7 +25,7 @@ public class TableStats {
     public static void setTableStats(String tablename, TableStats stats) {
         statsMap.put(tablename, stats);
     }
-    
+
     public static void setStatsMap(HashMap<String,TableStats> s)
     {
         try {
@@ -77,12 +77,12 @@ public class TableStats {
      *            The cost per page of IO. This doesn't differentiate between
      *            sequential-scan IO and disk seeks.
      */
-    
+
     private int tableid;
     private HeapFile file;
     private int ioCostPerPage;
     private int totalTuples;
-    
+
     public TableStats(int tableid, int ioCostPerPage) {
         // For this function, you'll have to get the
         // DbFile for the table in question,
@@ -176,27 +176,48 @@ public class TableStats {
         Type type = Database.getCatalog().getTupleDesc(tableid).getFieldType(field);
 
         if (type.equals(Type.INT_TYPE)) {
-            IntHistogram intHistogram = new IntHistogram(NUM_HIST_BINS, 0, 0);
+
             int min = Integer.MAX_VALUE;
             int max = Integer.MIN_VALUE;
             DbFileIterator iterator = file.iterator(new TransactionId());
+
             try {
                 iterator.open();
                 while (iterator.hasNext()) {
                     Tuple tuple = iterator.next();
                     IntField intField = (IntField) tuple.getField(field);
                     int value = intField.getValue();
-                    intHistogram.addValue(value);
-                    if(min > value)
+                    if (min > value)
                         min = value;
-                    if(max < value)
+                    if (max < value)
                         max = value;
                 }
-            } catch (DbException | TransactionAbortedException e) {
+            } catch (NoSuchElementException e) {
+                e.printStackTrace();
+            } catch (DbException e) {
+                e.printStackTrace();
+            } catch (TransactionAbortedException e) {
                 e.printStackTrace();
             }
-            intHistogram.setMinMax(min, max);
             
+            IntHistogram intHistogram = new IntHistogram(NUM_HIST_BINS, min, max);
+            
+            try {
+                iterator.rewind();
+                while (iterator.hasNext()) {
+                    Tuple tuple = iterator.next();
+                    IntField intField = (IntField) tuple.getField(field);
+                    int value = intField.getValue();
+                    intHistogram.addValue(value);
+                }
+            } catch (NoSuchElementException e) {
+                e.printStackTrace();
+            } catch (DbException e) {
+                e.printStackTrace();
+            } catch (TransactionAbortedException e) {
+                e.printStackTrace();
+            }
+
             IntField intConstant = (IntField) constant;
             return intHistogram.estimateSelectivity(op, intConstant.getValue());
         } else if (type.equals(Type.STRING_TYPE)) {
