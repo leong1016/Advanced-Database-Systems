@@ -24,7 +24,6 @@ public class BufferPool {
     private int maxPages;
     private HashMap<PageId, Page> pool;
     private LockManager manager;
-    private Locker locker;
     private List<PageId> evictionList;
 
     /** Bytes per page, including header. */
@@ -74,7 +73,7 @@ public class BufferPool {
 //                            }
                         }
                         long now = System.currentTimeMillis();
-                        if (now - start > 6000) {
+                        if (now - start > 1000) {
                             throw new TransactionAbortedException();
                         }
                     }
@@ -95,7 +94,7 @@ public class BufferPool {
 //                            }
                         }
                         long now = System.currentTimeMillis();
-                        if (now - start > 6000) {
+                        if (now - start > 1000) {
                             throw new TransactionAbortedException();
                         }
                     }
@@ -333,7 +332,6 @@ public class BufferPool {
         maxPages = numPages;
         pool = new HashMap<>(maxPages);
         manager = new LockManager();
-        locker = new Locker();
         evictionList = new LinkedList<>();
     }
 
