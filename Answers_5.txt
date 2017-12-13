@@ -1,0 +1,25 @@
+Documentation for Lab4
+Ashkan Bashardoust
+Yulong Liang
+
+***locking***
+Call acquire lock before get a page. Acquire lock will call acquire share lock or acquire exclusive lock depending on the permission passed from get page. If getting lock successfully, acquire lock will break. Otherwise, it will repeatedly run until acquiring lock succeed. When complete transaction is called, it will call release all lock to release all lock of the transaction. When evicting a page, it will call release page to only one page.
+
+***deadlock***
+Use the timeout mechanism to abort a transaction if time exceeds the threshold.
+
+Change to API:
+None.
+
+Missing or Incomplete Elements:
+None.
+
+Time Spent:
+Yulong: 5 days, 10 hours each in average = 50 hours
+Ashkan: 3 days, 6 hours each in average = 18 hours
+
+Confusing Parts:
+None.
+
+Bugs:
+None.

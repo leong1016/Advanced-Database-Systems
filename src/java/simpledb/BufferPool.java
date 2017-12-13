@@ -54,49 +54,39 @@ public class BufferPool {
 
         public void acquireLock(PageId pid, TransactionId tid, Permissions perm) throws TransactionAbortedException {
 
-            if (!(dependencyMap.containsKey(tid))) {
-                dependencyMap.put(tid, new HashSet<TransactionId>());
-            }
-
             long start = System.currentTimeMillis();
 
             if (perm.equals(Permissions.READ_ONLY)) {
                 while (true) {
                     if (acquireShareLock(pid, tid)) {
-                        dependencyMap.remove(tid);
                         break;
                     } else {
-                        if (exclusive.containsKey(pid)) {
-                            dependencyMap.get(tid).add(exclusive.get(pid));
-//                            if (containsCycle(tid)) {
-//                                throw new TransactionAbortedException();
-//                            }
-                        }
                         long now = System.currentTimeMillis();
-                        if (now - start > 1000) {
+                        if (now - start > 200) {
                             throw new TransactionAbortedException();
                         }
                     }
+                    try {
+                        Thread.sleep(1);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
                 }
             } else if (perm.equals(Permissions.READ_WRITE)) {
                 while (true) {
                     if (acquireExclusiveLock(pid, tid)) {
-                        dependencyMap.remove(tid);
                         break;
                     } else {
-                        if (exclusive.containsKey(pid)) {
-                            dependencyMap.get(tid).add(exclusive.get(pid));
-                            if (share.containsKey(pid)) {
-                                dependencyMap.get(tid).addAll(share.get(pid));
-                            }
-//                            if (this.containsCycle(tid)) {
-//                                throw new TransactionAbortedException();
-//                            }
-                        }
                         long now = System.currentTimeMillis();
-                        if (now - start > 1000) {
+                        if (now - start > 200) {
                             throw new TransactionAbortedException();
                         }
+                    }
+                    try {
+                        Thread.sleep(1);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
                     }
                 }
             }
@@ -105,13 +95,16 @@ public class BufferPool {
         public boolean acquireShareLock(PageId pid, TransactionId tid) {
 
             if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
+                System.out.println(tid.getId()+"has already share locked:"+pid.pageNumber());
                 return true;
             }
             if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
+                System.out.println(tid.getId()+"has already share locked:"+pid.pageNumber());
                 return true;
             }
 
             if (exclusive.containsKey(pid)) {
+                System.out.println(tid.getId()+"failed to share lock:"+pid.pageNumber());
                 return false;
             } else {
                 if (share.containsKey(pid)) {
@@ -132,16 +125,24 @@ public class BufferPool {
                     pids.add(pid);
                     reverseShare.put(tid, pids);
                 }
+                System.out.println(tid.getId()+"successfully share locked:"+pid.pageNumber());
                 return true;
             }
         }
 
         public boolean acquireExclusiveLock(PageId pid, TransactionId tid) {
             if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
+                System.out.println(tid.getId()+"has already exclusive locked:"+pid.pageNumber());
                 return true;
             }
-            if (exclusive.containsKey(pid) || 
-                    share.containsKey(pid) && (share.get(pid).size() > 1 || !share.get(pid).contains(tid))) {
+            if (exclusive.containsKey(pid)) {
+                System.out.println(tid.getId()+"failed to exclusive lock:"+pid.pageNumber());
+                return false;
+            } else if (share.containsKey(pid) && (share.get(pid).size() > 1 || !share.get(pid).contains(tid))) {
+                System.out.println(tid.getId()+"failed to exclusive lock:"+pid.pageNumber());
+//                for (TransactionId t : share.get(pid)) {
+//                    System.out.println(t.getId());
+//                }
                 return false;
             } else {
                 if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
@@ -170,6 +171,7 @@ public class BufferPool {
                     pids.add(pid);
                     reverseExclusive.put(tid, pids);
                 }
+                System.out.println(tid.getId()+"successfully exclusive locked:"+pid.pageNumber());
                 return true;
             }
         }
@@ -208,6 +210,7 @@ public class BufferPool {
         }
 
         public void releaseAllLock(TransactionId tid) {
+            System.out.println(tid.getId()+"release all locks");
             if (reverseShare.containsKey(tid)) {
                 HashSet<PageId> pids = reverseShare.get(tid);
                 for (PageId pid : pids) {
@@ -250,75 +253,6 @@ public class BufferPool {
             } else {
                 return null;
             }
-        }
-
-//        private boolean containsCycle(TransactionId tid) {
-//            HashSet<TransactionId> visited = new HashSet<TransactionId>();
-//            LinkedList<TransactionId> queue = new LinkedList<TransactionId>();
-//
-//            queue.add(tid);
-//
-//            while (!(queue.isEmpty())) {
-//                TransactionId cur = queue.remove();
-//                if (visited.contains(cur)) {
-//                    return true;
-//                }
-//
-//                visited.add(cur);
-//
-//                if (this.dependencyMap.containsKey(cur) && !(this.dependencyMap.get(cur).isEmpty())) {
-//                    Iterator<TransactionId> it = this.dependencyMap.get(cur).iterator();
-//                    while (it.hasNext()) {
-//                        queue.add(it.next());
-//                    }
-//                }
-//            }
-//            return false;
-//        }
-    }
-
-    private class Graph {
-        private HashMap<TransactionId, HashSet<TransactionId>> graph;
-        private HashMap<TransactionId, Boolean> isMarked;
-        private HashMap<TransactionId, Boolean> inStack;
-
-        public Graph() {
-            graph = new HashMap<>();
-            isMarked = new HashMap<>();
-            inStack = new HashMap<>();
-        }
-
-        public boolean hasCycle() {
-            for (TransactionId v : graph.keySet()) {
-                if (!isMarked.containsKey(v) || !isMarked.get(v)) {
-                    return dfs(v);
-                }
-            }
-            return false;
-        }
-
-        public boolean dfs(TransactionId v) {
-            inStack.put(v, true);
-            isMarked.put(v, true);
-            HashSet<TransactionId> adj = graph.get(v);
-            for (TransactionId w : adj) {
-                if (!isMarked.containsKey(w) || !isMarked.get(v))
-                    dfs(w);
-                else if (inStack.containsKey(w) && inStack.get(w))
-                    return true;
-                else
-                    continue;
-            }
-            inStack.remove(v);
-            return false;
-        }
-
-        public void addNode(TransactionId tid, HashSet<TransactionId> tids) {
-            graph.put(tid, tids);
-        }
-
-        public void removeNode(TransactionId tid) {
-            graph.remove(tid);
         }
     }
 
@@ -364,7 +298,7 @@ public class BufferPool {
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
-    public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public synchronized Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
         // some code goes here
         manager.acquireLock(pid, tid, perm);
@@ -453,7 +387,7 @@ public class BufferPool {
      * @param tableId the table to add the tuple to
      * @param t the tuple to add
      */
-    public void insertTuple(TransactionId tid, int tableId, Tuple t)
+    public synchronized void insertTuple(TransactionId tid, int tableId, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
@@ -479,7 +413,7 @@ public class BufferPool {
      * @param tid the transaction deleting the tuple.
      * @param t the tuple to delete
      */
-    public  void deleteTuple(TransactionId tid, Tuple t)
+    public synchronized void deleteTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
