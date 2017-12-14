@@ -8,7 +8,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
-import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -27,6 +26,7 @@ public class BufferPool {
     private HashMap<PageId, Page> pool;
     private LockManager manager;
     private List<PageId> evictionList;
+    private PageId mostRecent = null;
 
     /** Bytes per page, including header. */
     private static final int PAGE_SIZE = 4096;
@@ -80,13 +80,20 @@ public class BufferPool {
                             synchronized (share.get(pid)) {
                                 share.get(pid).add(tid);
                             }
+                            System.out.println(tid.getId()+"share lock succeeded"+pid.pageNumber());
                             break;
                         } else {
                             long now = System.currentTimeMillis();
                             if (now - start > 200) {
                                 throw new TransactionAbortedException();
                             }
+                            System.out.println(tid.getId()+"share lock failed"+pid.pageNumber());
                         }
+                    }
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
                     }
                 }
 //                    if (acquireShareLock(pid, tid)) {
@@ -97,11 +104,7 @@ public class BufferPool {
 //                            throw new TransactionAbortedException();
 //                        }
 //                    }
-//                    try {
-//                        Thread.sleep(1);
-//                    } catch (InterruptedException e) {
-//                        e.printStackTrace();
-//                    }
+
             } else if (perm.equals(Permissions.READ_WRITE) && !exclusive.get(pid).equals(tid)) {
                 while (true) {
                     synchronized (lock) {
@@ -113,12 +116,14 @@ public class BufferPool {
                             synchronized (exclusive.get(pid)) {
                                 exclusive.put(pid, tid);
                             }
+                            System.out.println(tid.getId()+"exclusive lock succeeded"+pid.pageNumber());
                             break;
                         } else {
                             long now = System.currentTimeMillis();
                             if (now - start > 200) {
                                 throw new TransactionAbortedException();
                             }
+                            System.out.println(tid.getId()+"exclusive lock failed"+pid.pageNumber());
                         }
                     }
                     
@@ -130,11 +135,11 @@ public class BufferPool {
 //                            throw new TransactionAbortedException();
 //                        }
 //                    }
-//                    try {
-//                        Thread.sleep(1);
-//                    } catch (InterruptedException e) {
-//                        e.printStackTrace();
-//                    }
+                    try {
+                        Thread.sleep(10);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
             
@@ -168,6 +173,7 @@ public class BufferPool {
         }
         
         public void releaseAllLock(TransactionId tid) {
+            System.out.println(tid.getId()+"release all locks");
             if (!reverse.containsKey(tid))
                 return;
             
@@ -403,241 +409,236 @@ public class BufferPool {
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
-    public synchronized Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
-        // some code goes here
-//        manager.acquireLock(pid, tid, perm);
-        //        locker.acquireLock(tid, pid, perm);
-        if (pool.containsKey(pid)) {
-            evictionList.remove(pid);
-            evictionList.add(pid);
-            manager.acquireLock(pid, tid, perm);
-            return pool.get(pid);
-        } else {
-            if (pool.size() == maxPages) {
-                evictPage(tid);
+            if (this.pool.size() == this.maxPages) {
+                this.evictPage();
             }
-            DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
-            Page page = dbFile.readPage(pid);
-            pool.put(pid, page);
-            evictionList.add(pid);
+
+            if (!(this.pool.containsKey(pid))) {
+                Page p = Database
+                             .getCatalog()
+                             .getDatabaseFile(pid.getTableId())
+                             .readPage(pid);
+                p.setBeforeImage();
+                this.pool.put(pid, p);
+            }
+
+            this.mostRecent = pid;
             manager.acquireLock(pid, tid, perm);
-            return page;
+            return this.pool.get(pid);
         }
-    }
 
-    /**
-     * Releases the lock on a page.
-     * Calling this is very risky, and may result in wrong behavior. Think hard
-     * about who needs to call this and why, and why they can run the risk of
-     * calling it.
-     *
-     * @param tid the ID of the transaction requesting the unlock
-     * @param pid the ID of the page to unlock
-     */
-    public  void releasePage(TransactionId tid, PageId pid) {
-        // some code goes here
-        // not necessary for lab1|lab2
-        manager.releaseLock(tid, pid);
-    }
+        /**
+         * Releases the lock on a page.
+         * Calling this is very risky, and may result in wrong behavior. Think hard
+         * about who needs to call this and why, and why they can run the risk of
+         * calling it.
+         *
+         * @param tid the ID of the transaction requesting the unlock
+         * @param pid the ID of the page to unlock
+         */
+        public void releasePage(TransactionId tid, PageId pid) {
+            manager.releaseLock(tid, pid);
+        }
 
-    /**
-     * Release all locks associated with a given transaction.
-     *
-     * @param tid the ID of the transaction requesting the unlock
-     */
-    public void transactionComplete(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
-        transactionComplete(tid, true);
-    }
+        /**
+         * Release all locks associated with a given transaction.
+         *
+         * @param tid the ID of the transaction requesting the unlock
+         */
+        public void transactionComplete(TransactionId tid) throws IOException {
+            this.transactionComplete(tid, true);
+        }
 
-    /** Return true if the specified transaction has a lock on the specified page */
-    public boolean holdsLock(TransactionId tid, PageId p) {
-        // some code goes here
-        // not necessary for lab1|lab2
-        return manager.holdsLock(tid, p);
-    }
+        /** Return true if the specified transaction has a lock on the specified page */
+        public boolean holdsLock(TransactionId tid, PageId p) {
+            return manager.holdsLock(tid, p);
+        }
 
-    /**
-     * Commit or abort a given transaction; release all locks associated to
-     * the transaction.
-     *
-     * @param tid the ID of the transaction requesting the unlock
-     * @param commit a flag indicating whether we should commit or abort
-     */
-    public void transactionComplete(TransactionId tid, boolean commit)
+        /**
+         * Commit or abort a given transaction; release all locks associated to
+         * the transaction.
+         *
+         * @param tid the ID of the transaction requesting the unlock
+         * @param commit a flag indicating whether we should commit or abort
+         */
+        public void transactionComplete(TransactionId tid, boolean commit)
             throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+            // Check that the transaction has not already been committed.
+            if (manager.exclusivePages(tid) == null) {
+                return;
+            }
+
+            if (commit) {
+                Iterator<PageId> it = manager.exclusivePages(tid).iterator();
+                while (it.hasNext()) {
+                    PageId pid = it.next();
+                    Page p = this.pool.get(pid);
+                    if (p != null) {
+                        // Potentially add a check to ensure that all flushed pages are
+                        // correctly marked for the given transaction.
+                        this.flushPage(pid);
+                        
+                        // Use current page contents as the before-image
+                        // for the next transaction that modifies this page.
+                        this.pool.get(pid).setBeforeImage();
+                    }
+                }
+            } else {
+                Iterator<PageId> it = manager.exclusivePages(tid).iterator();
+                while (it.hasNext()) {
+                    PageId pid = it.next();
+                    if (this.pool.containsKey(pid)) {
+                        Page p = this.pool.get(pid);
         
-        if (commit) {
-            flushPages(tid);
-        } else {
-            discardPages(tid);
-        }
-        manager.releaseAllLock(tid);
-    }
-
-    /**
-     * Add a tuple to the specified table on behalf of transaction tid.  Will
-     * acquire a write lock on the page the tuple is added to and any other 
-     * pages that are updated (Lock acquisition is not needed for lab2). 
-     * May block if the lock(s) cannot be acquired.
-     * 
-     * Marks any pages that were dirtied by the operation as dirty by calling
-     * their markDirty bit, and adds versions of any pages that have 
-     * been dirtied to the cache (replacing any existing versions of those pages) so 
-     * that future requests see up-to-date pages. 
-     *
-     * @param tid the transaction adding the tuple
-     * @param tableId the table to add the tuple to
-     * @param t the tuple to add
-     */
-    public synchronized void insertTuple(TransactionId tid, int tableId, Tuple t)
-            throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
-        DbFile file = Database.getCatalog().getDatabaseFile(tableId);
-        List<Page> pages = file.insertTuple(tid, t);
-        for (Page page : pages) {
-            //            getPage(tid, page.getId(), Permissions.READ_WRITE);
-            page.markDirty(true, tid);
-            pool.put(page.getId(), page);
-        }
-    }
-
-    /**
-     * Remove the specified tuple from the buffer pool.
-     * Will acquire a write lock on the page the tuple is removed from and any
-     * other pages that are updated. May block if the lock(s) cannot be acquired.
-     *
-     * Marks any pages that were dirtied by the operation as dirty by calling
-     * their markDirty bit, and adds versions of any pages that have 
-     * been dirtied to the cache (replacing any existing versions of those pages) so 
-     * that future requests see up-to-date pages. 
-     *
-     * @param tid the transaction deleting the tuple.
-     * @param t the tuple to delete
-     */
-    public synchronized void deleteTuple(TransactionId tid, Tuple t)
-            throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
-        int tableid = t.getRecordId().getPageId().getTableId();
-        DbFile file = Database.getCatalog().getDatabaseFile(tableid);
-        List<Page> pages = file.deleteTuple(tid, t);
-        for (Page page : pages) {
-            //			getPage(tid, page.getId(), Permissions.READ_WRITE);
-            page.markDirty(true, tid);
-            pool.put(page.getId(), page);
-        }
-    }
-
-    /**
-     * Flush all dirty pages to disk.
-     * NB: Be careful using this routine -- it writes dirty data to disk so will
-     *     break simpledb if running in NO STEAL mode.
-     */
-    public synchronized void flushAllPages() throws IOException {
-        // some code goes here
-        // not necessary for lab1
-        for (Page page : pool.values()) {
-            if (page.isDirty() != null) {
-                flushPage(page.getId());
-            }
-        }
-    }
-
-    /** Remove the specific page id from the buffer pool.
-        Needed by the recovery manager to ensure that the
-        buffer pool doesn't keep a rolled back page in its
-        cache.
-
-        Also used by B+ tree files to ensure that deleted pages
-        are removed from the cache so they can be reused safely
-     */
-    public synchronized void discardPage(PageId pid) {
-        // some code goes here
-        // not necessary for lab1
-        pool.remove(pid);
-    }
-
-    public synchronized void discardPages(TransactionId tid) {
-        HashSet<PageId> pids = manager.exclusivePages(tid);
-        if (pids == null)
-            return;
-        for (PageId pid : pids) {
-            System.out.println(pool.get(pid).toString());
-            if (pool.get(pid).isDirty() != null) {
-                discardPage(pid);
-            }
-        }
-    }
-
-    /**
-     * Flushes a certain page to disk
-     * @param pid an ID indicating the page to flush
-     */
-    private synchronized  void flushPage(PageId pid) throws IOException {
-        // some code goes here
-        // not necessary for lab1
-        Page page = pool.get(pid);
-        DbFile dbFile = Database.getCatalog().getDatabaseFile(pid.getTableId());
-        dbFile.writePage(page);
-        page.markDirty(false, null);
-    }
-
-    /** Write all pages of the specified transaction to disk.
-     */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
-        HashSet<PageId> pids = manager.exclusivePages(tid);
-        if (pids == null)
-            return;
-        for (PageId pid : pids) {
-            if (pool.get(pid).isDirty() != null) {
-                flushPage(pid);
-            }
-        }
-    }
-
-    /**
-     * Discards a page from the buffer pool.
-     * Flushes the page to disk to ensure dirty pages are updated on disk.
-     */
-    private synchronized  void evictPage(TransactionId tid) throws DbException {
-        // some code goes here
-        // not necessary for lab1
-        for (int i = 0; i < evictionList.size(); i++) {
-            PageId pid = evictionList.get(i);
-            if (!pool.containsKey(pid)) {
-                evictionList.remove(i);
-            } else if (pool.get(pid).isDirty() == null) {
-                try {
-                    flushPage(pid);
-                    discardPage(pid);
-                    evictionList.remove(i);
-                    releasePage(tid, pid);
-                    return;
-                } catch (IOException e) {
-                    e.printStackTrace();
+                        // It should be enough to check that isPageDirty returns a
+                        // non-null value, but this ensures that it was dirtied by
+                        // the correct transaction.
+                        if (p.isDirty() != null &&
+                            p.isDirty().equals(tid)) {
+                            this.pool.put(pid, p.getBeforeImage());
+                        }
+                    }
                 }
             }
+
+            manager.releaseAllLock(tid);
         }
-        throw new DbException("All the pages are dirty!");
 
-        //    		PageId pid = evictionList.get(0);
-        //    		evictionList.remove(0);
-        //        if (pool.get(pid).page.isDirty() != null) {
-        //            try {
-        //                flushPage(pid);
-        //            } catch (IOException e) {
-        //                e.printStackTrace();
-        //            }
-        //        }
-        //        discardPage(pid);
+        /**
+         * Add a tuple to the specified table on behalf of transaction tid.  Will
+         * acquire a write lock on the page the tuple is added to and any other 
+         * pages that are updated (Lock acquisition is not needed for lab2). 
+         * May block if the lock(s) cannot be acquired.
+         * 
+         * Marks any pages that were dirtied by the operation as dirty by calling
+         * their markPageDirty bit, and adds versions of any pages that have 
+         * been dirtied to the cache (replacing any existing versions of those pages) so 
+         * that future requests see up-to-date pages. 
+         *
+         * @param tid the transaction adding the tuple
+         * @param tableId the table to add the tuple to
+         * @param t the tuple to add
+         */
+        public void insertTuple(TransactionId tid, int tableId, Tuple t)
+            throws DbException, IOException, TransactionAbortedException {
+            ArrayList<Page> changed =
+                Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid, t);
+            
+            Iterator<Page> it = changed.iterator();
+            while (it.hasNext()) {
+                Page p = it.next();
+                p.markDirty(true, tid);
+                this.pool.put(p.getId(), p);
+            }
+        }
+
+        /**
+         * Remove the specified tuple from the buffer pool.
+         * Will acquire a write lock on the page the tuple is removed from and any
+         * other pages that are updated. May block if the lock(s) cannot be acquired.
+         *
+         * Marks any pages that were dirtied by the operation as dirty by calling
+         * their markPageDirty bit, and adds versions of any pages that have 
+         * been dirtied to the cache (replacing any existing versions of those pages) so 
+         * that future requests see up-to-date pages. 
+         *
+         * @param tid the transaction deleting the tuple.
+         * @param t the tuple to delete
+         */
+        public void deleteTuple(TransactionId tid, Tuple t)
+            throws DbException, IOException, TransactionAbortedException {
+            ArrayList<Page> changed =
+                Database
+                    .getCatalog()
+                    .getDatabaseFile(t.getRecordId().getPageId().getTableId())
+                    .deleteTuple(tid, t);
+            
+            Iterator<Page> it = changed.iterator();
+            while (it.hasNext()) {
+                Page p = it.next();
+                p.markDirty(true, tid);
+                this.pool.put(p.getId(), p);
+            }
+        }
+
+        /**
+         * Flush all dirty pages to disk.
+         * NB: Be careful using this routine -- it writes dirty data to disk so will
+         *     break simpledb if running in NO STEAL mode.
+         */
+        public synchronized void flushAllPages() throws IOException {
+            Iterator<PageId> pageIds = this.pool.keySet().iterator();
+            while (pageIds.hasNext()) {
+                this.flushPage(pageIds.next());
+            }
+        }
+
+        /** Remove the specific page id from the buffer pool.
+            Needed by the recovery manager to ensure that the
+            buffer pool doesn't keep a rolled back page in its
+            cache.
+            
+            Also used by B+ tree files to ensure that deleted pages
+            are removed from the cache so they can be reused safely
+        */
+        public synchronized void discardPage(PageId pid) {
+            this.pool.remove(pid);
+        }
+
+        /**
+         * Flushes a certain page to disk
+         * @param pid an ID indicating the page to flush
+         */
+        private synchronized void flushPage(PageId pid) throws IOException {
+            Page p = this.pool.get(pid);
+            if (p != null) {
+                TransactionId tid = p.isDirty();
+                if (tid != null) {
+                    // Append an update record to the log, with 
+                    // a before-image and after-image.
+                    Database.getLogFile().logWrite(tid, p.getBeforeImage(), p);
+                    Database.getLogFile().force();
+                }
+
+                Database
+                    .getCatalog()
+                    .getDatabaseFile(pid.getTableId())
+                    .writePage(this.pool.get(pid));
+
+                p.markDirty(false, tid);
+            }
+        }
+
+        /** Write all pages of the specified transaction to disk.
+         */
+        public synchronized void flushPages(TransactionId tid) throws IOException {
+            Iterator<PageId> it = manager.exclusivePages(tid).iterator();
+            while (it.hasNext()) {
+                // Potentially add a check to ensure that all flushed pages are
+                // correctly marked for the given transaction.
+                this.flushPage(it.next());
+            }
+        }
+
+        /**
+         * Discards a page from the buffer pool.
+         * Only evicts dirty pages as part of the NO STEAL/FORCE policy.
+         */
+        private synchronized void evictPage() throws DbException {
+            PageId evict = this.mostRecent;
+            Iterator<PageId> it = this.pool.keySet().iterator();
+            while (it.hasNext() && (this.pool.get(evict).isDirty() != null)) {
+                evict = it.next();
+            }
+            
+            if (this.pool.get(evict).isDirty() != null) {
+                throw new DbException(
+                              "Cannot evict a page because all pages are dirty.");
+            }
+
+            this.discardPage(evict);
+        }
+
     }
-
-}
