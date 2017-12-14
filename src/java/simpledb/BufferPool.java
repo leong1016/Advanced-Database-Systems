@@ -8,6 +8,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+import javax.net.ssl.SSLEngineResult.HandshakeStatus;
+
 /**
  * BufferPool manages the reading and writing of pages into memory from
  * disk. Access methods call into it to retrieve pages, and it fetches
@@ -36,220 +38,323 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
-    private class LockManager {
+    private static class LockManager {
+        
+        private static TransactionId NO_LOCK = new TransactionId();
 
+        private ConcurrentHashMap<PageId, Object> locks;
         private ConcurrentHashMap<PageId, HashSet<TransactionId>> share;
         private ConcurrentHashMap<PageId, TransactionId> exclusive;
-        private ConcurrentHashMap<TransactionId, HashSet<PageId>> reverseShare;
-        private ConcurrentHashMap<TransactionId, HashSet<PageId>> reverseExclusive;
-        private ConcurrentHashMap<TransactionId, HashSet<TransactionId>> dependencyMap;
+        private ConcurrentHashMap<TransactionId, HashSet<PageId>> reverse;
+//        private ConcurrentHashMap<TransactionId, HashSet<PageId>> reverseShare;
+//        private ConcurrentHashMap<TransactionId, HashSet<PageId>> reverseExclusive;
 
         public LockManager() {
+            locks = new ConcurrentHashMap<>();
             share = new ConcurrentHashMap<>();
             exclusive = new ConcurrentHashMap<>();
-            reverseShare = new ConcurrentHashMap<>();
-            reverseExclusive = new ConcurrentHashMap<>();
-            dependencyMap = new ConcurrentHashMap<>();
+            reverse = new ConcurrentHashMap<>();
+//            reverseShare = new ConcurrentHashMap<>();
+//            reverseExclusive = new ConcurrentHashMap<>();
         }
 
+        public Object getLock(PageId pid) {
+            if (!locks.containsKey(pid)) {
+                locks.put(pid, new Object());
+                share.put(pid, new HashSet<>());
+                exclusive.put(pid, NO_LOCK);
+            }
+            return locks.get(pid);
+        }
+        
         public void acquireLock(PageId pid, TransactionId tid, Permissions perm) throws TransactionAbortedException {
 
             long start = System.currentTimeMillis();
+            
+            Object lock = getLock(pid);
 
-            if (perm.equals(Permissions.READ_ONLY)) {
+            if (perm.equals(Permissions.READ_ONLY) && !share.get(pid).contains(tid)) {
                 while (true) {
-                    if (acquireShareLock(pid, tid)) {
-                        break;
-                    } else {
-                        long now = System.currentTimeMillis();
-                        if (now - start > 200) {
-                            throw new TransactionAbortedException();
-                        }
-                    }
-                    try {
-                        Thread.sleep(1);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-
-                }
-            } else if (perm.equals(Permissions.READ_WRITE)) {
-                while (true) {
-                    if (acquireExclusiveLock(pid, tid)) {
-                        break;
-                    } else {
-                        long now = System.currentTimeMillis();
-                        if (now - start > 200) {
-                            throw new TransactionAbortedException();
-                        }
-                    }
-                    try {
-                        Thread.sleep(1);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }
-
-        public boolean acquireShareLock(PageId pid, TransactionId tid) {
-
-            if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
-                System.out.println(tid.getId()+"has already share locked:"+pid.pageNumber());
-                return true;
-            }
-            if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
-                System.out.println(tid.getId()+"has already share locked:"+pid.pageNumber());
-                return true;
-            }
-
-            if (exclusive.containsKey(pid)) {
-                System.out.println(tid.getId()+"failed to share lock:"+pid.pageNumber());
-                return false;
-            } else {
-                if (share.containsKey(pid)) {
-                    HashSet<TransactionId> tids = share.get(pid);
-                    tids.add(tid);
-                    share.put(pid, tids);
-                } else {
-                    HashSet<TransactionId> tids = new HashSet<>();
-                    tids.add(tid);
-                    share.put(pid, tids);
-                }
-                if (reverseShare.containsKey(tid)) {
-                    HashSet<PageId> pids = reverseShare.get(tid);
-                    pids.add(pid);
-                    reverseShare.put(tid, pids);
-                } else {
-                    HashSet<PageId> pids = new HashSet<>();
-                    pids.add(pid);
-                    reverseShare.put(tid, pids);
-                }
-                System.out.println(tid.getId()+"successfully share locked:"+pid.pageNumber());
-                return true;
-            }
-        }
-
-        public boolean acquireExclusiveLock(PageId pid, TransactionId tid) {
-            if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
-                System.out.println(tid.getId()+"has already exclusive locked:"+pid.pageNumber());
-                return true;
-            }
-            if (exclusive.containsKey(pid)) {
-                System.out.println(tid.getId()+"failed to exclusive lock:"+pid.pageNumber());
-                return false;
-            } else if (share.containsKey(pid) && (share.get(pid).size() > 1 || !share.get(pid).contains(tid))) {
-                System.out.println(tid.getId()+"failed to exclusive lock:"+pid.pageNumber());
-//                for (TransactionId t : share.get(pid)) {
-//                    System.out.println(t.getId());
-//                }
-                return false;
-            } else {
-                if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
-                    HashSet<TransactionId> tids = share.get(pid);
-                    tids.remove(tid);
-                    if (tids.size() == 0) {
-                        share.remove(pid);
-                    } else {
-                        share.put(pid, tids);
-                    }
-                    HashSet<PageId> pids = reverseShare.get(tid);
-                    pids.remove(pid);
-                    if (pids.size() == 0) {
-                        reverseShare.remove(tid);
-                    } else {
-                        reverseShare.put(tid, pids);
-                    }
-                }
-                exclusive.put(pid, tid);
-                if (reverseExclusive.containsKey(tid)) {
-                    HashSet<PageId> pids = reverseExclusive.get(tid);
-                    pids.add(pid);
-                    reverseExclusive.put(tid, pids);
-                } else {
-                    HashSet<PageId> pids = new HashSet<>();
-                    pids.add(pid);
-                    reverseExclusive.put(tid, pids);
-                }
-                System.out.println(tid.getId()+"successfully exclusive locked:"+pid.pageNumber());
-                return true;
-            }
-        }
-
-        public void releaseLock(PageId pid, TransactionId tid) {
-            if (share.containsKey(pid)) {
-                HashSet<TransactionId> tids = share.get(pid);
-                tids.remove(tid);
-                if (tids.size() == 0) {
-                    share.remove(pid);
-                } else {
-                    share.put(pid, tids);
-                }
-            }
-            if (exclusive.containsKey(pid)) {
-                exclusive.remove(pid);
-            }
-            if (reverseShare.containsKey(tid)) {
-                HashSet<PageId> pids = reverseShare.get(tid);
-                pids.remove(pid);
-                if (pids.size() == 0) {
-                    reverseShare.remove(tid);
-                } else {
-                    reverseShare.put(tid, pids);
-                }
-            }
-            if (reverseExclusive.containsKey(tid)) {
-                HashSet<PageId> pids = reverseExclusive.get(tid);
-                pids.remove(pid);
-                if (pids.size() == 0) {
-                    reverseExclusive.remove(tid);
-                } else {
-                    reverseExclusive.put(tid, pids);
-                }
-            }
-        }
-
-        public void releaseAllLock(TransactionId tid) {
-            System.out.println(tid.getId()+"release all locks");
-            if (reverseShare.containsKey(tid)) {
-                HashSet<PageId> pids = reverseShare.get(tid);
-                for (PageId pid : pids) {
-                    if (share.containsKey(pid)) {
-                        HashSet<TransactionId> tids = share.get(pid);
-                        tids.remove(tid);
-                        if (tids.size() == 0) {
-                            share.remove(pid);
+                    synchronized (lock) {
+                        if (exclusive.get(pid).equals(NO_LOCK) || exclusive.get(pid).equals(tid)) {
+                            synchronized (share.get(pid)) {
+                                share.get(pid).add(tid);
+                            }
+                            break;
                         } else {
-                            share.put(pid, tids);
+                            long now = System.currentTimeMillis();
+                            if (now - start > 200) {
+                                throw new TransactionAbortedException();
+                            }
                         }
                     }
                 }
-                reverseShare.remove(tid);
-            }
-            if (reverseExclusive.containsKey(tid)) {
-                HashSet<PageId> pids = reverseExclusive.get(tid);
-                for (PageId pid : pids) {
-                    if (exclusive.containsKey(pid)) {
-                        exclusive.remove(pid);
+//                    if (acquireShareLock(pid, tid)) {
+//                        break;
+//                    } else {
+//                        long now = System.currentTimeMillis();
+//                        if (now - start > 200) {
+//                            throw new TransactionAbortedException();
+//                        }
+//                    }
+//                    try {
+//                        Thread.sleep(1);
+//                    } catch (InterruptedException e) {
+//                        e.printStackTrace();
+//                    }
+            } else if (perm.equals(Permissions.READ_WRITE) && !exclusive.get(pid).equals(tid)) {
+                while (true) {
+                    synchronized (lock) {
+                        if ((share.get(pid).size() == 0 || share.get(pid).size() == 1 && share.get(pid).contains(tid)) 
+                                && exclusive.get(pid).equals(NO_LOCK)) {
+                            synchronized (share.get(pid)) {
+                                share.get(pid).remove(tid);
+                            }
+                            synchronized (exclusive.get(pid)) {
+                                exclusive.put(pid, tid);
+                            }
+                            break;
+                        } else {
+                            long now = System.currentTimeMillis();
+                            if (now - start > 200) {
+                                throw new TransactionAbortedException();
+                            }
+                        }
                     }
+                    
+//                    if (acquireExclusiveLock(pid, tid)) {
+//                        break;
+//                    } else {
+//                        long now = System.currentTimeMillis();
+//                        if (now - start > 200) {
+//                            throw new TransactionAbortedException();
+//                        }
+//                    }
+//                    try {
+//                        Thread.sleep(1);
+//                    } catch (InterruptedException e) {
+//                        e.printStackTrace();
+//                    }
                 }
-                reverseExclusive.remove(tid);
+            }
+            
+            if (!(this.reverse.containsKey(tid))) {
+                this.reverse.put(tid, new HashSet<PageId>());
+            }
+            
+            synchronized(this.reverse.get(tid)) {
+                this.reverse.get(tid).add(pid);
             }
         }
+        
+        public void releaseLock(TransactionId tid, PageId pid) {
+            if (!reverse.containsKey(tid))
+                return;
+            
+            Object lock = this.getLock(pid);
+            synchronized (lock) {
+                if (exclusive.get(pid).equals(tid)) {
+                    exclusive.put(pid, NO_LOCK);
+                }
+                
+                synchronized (share.get(pid)) {
+                    share.get(pid).remove(tid);
+                }
+            }
+            
+            synchronized(this.reverse.get(tid)) {
+                this.reverse.get(tid).remove(pid);
+            }
+        }
+        
+        public void releaseAllLock(TransactionId tid) {
+            if (!reverse.containsKey(tid))
+                return;
+            
+            HashSet<PageId> pids = reverse.get(tid);
+            for (PageId pid : pids) {
+                Object lock = getLock(pid);
+                synchronized (lock) {
+                    if (exclusive.get(pid).equals(tid)) {
+                        exclusive.put(pid, NO_LOCK);
+                    }
+                    synchronized (share.get(pid)) {
+                        share.get(pid).remove(tid);
+                    }
+                }
+            }
+            
+            reverse.remove(tid);
+        }
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+//        public boolean acquireShareLock(PageId pid, TransactionId tid) {
+//
+//            if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
+//                System.out.println(tid.getId()+"has already share locked:"+pid.pageNumber());
+//                return true;
+//            }
+//            if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
+//                System.out.println(tid.getId()+"has already share locked:"+pid.pageNumber());
+//                return true;
+//            }
+//
+//            if (exclusive.containsKey(pid)) {
+//                System.out.println(tid.getId()+"failed to share lock:"+pid.pageNumber());
+//                return false;
+//            } else {
+//                if (share.containsKey(pid)) {
+//                    HashSet<TransactionId> tids = share.get(pid);
+//                    tids.add(tid);
+//                    share.put(pid, tids);
+//                } else {
+//                    HashSet<TransactionId> tids = new HashSet<>();
+//                    tids.add(tid);
+//                    share.put(pid, tids);
+//                }
+//                if (reverseShare.containsKey(tid)) {
+//                    HashSet<PageId> pids = reverseShare.get(tid);
+//                    pids.add(pid);
+//                    reverseShare.put(tid, pids);
+//                } else {
+//                    HashSet<PageId> pids = new HashSet<>();
+//                    pids.add(pid);
+//                    reverseShare.put(tid, pids);
+//                }
+//                System.out.println(tid.getId()+"successfully share locked:"+pid.pageNumber());
+//                return true;
+//            }
+//        }
+//
+//        public boolean acquireExclusiveLock(PageId pid, TransactionId tid) {
+//            if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
+//                System.out.println(tid.getId()+"has already exclusive locked:"+pid.pageNumber());
+//                return true;
+//            }
+//            if (exclusive.containsKey(pid)) {
+//                System.out.println(tid.getId()+"failed to exclusive lock:"+pid.pageNumber());
+//                return false;
+//            } else if (share.containsKey(pid) && (share.get(pid).size() > 1 || !share.get(pid).contains(tid))) {
+//                System.out.println(tid.getId()+"failed to exclusive lock:"+pid.pageNumber());
+////                for (TransactionId t : share.get(pid)) {
+////                    System.out.println(t.getId());
+////                }
+//                return false;
+//            } else {
+//                if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
+//                    HashSet<TransactionId> tids = share.get(pid);
+//                    tids.remove(tid);
+//                    if (tids.size() == 0) {
+//                        share.remove(pid);
+//                    } else {
+//                        share.put(pid, tids);
+//                    }
+//                    HashSet<PageId> pids = reverseShare.get(tid);
+//                    pids.remove(pid);
+//                    if (pids.size() == 0) {
+//                        reverseShare.remove(tid);
+//                    } else {
+//                        reverseShare.put(tid, pids);
+//                    }
+//                }
+//                exclusive.put(pid, tid);
+//                if (reverseExclusive.containsKey(tid)) {
+//                    HashSet<PageId> pids = reverseExclusive.get(tid);
+//                    pids.add(pid);
+//                    reverseExclusive.put(tid, pids);
+//                } else {
+//                    HashSet<PageId> pids = new HashSet<>();
+//                    pids.add(pid);
+//                    reverseExclusive.put(tid, pids);
+//                }
+//                System.out.println(tid.getId()+"successfully exclusive locked:"+pid.pageNumber());
+//                return true;
+//            }
+//        }
+//
+//        public void releaseLock(PageId pid, TransactionId tid) {
+//            if (share.containsKey(pid)) {
+//                HashSet<TransactionId> tids = share.get(pid);
+//                tids.remove(tid);
+//                if (tids.size() == 0) {
+//                    share.remove(pid);
+//                } else {
+//                    share.put(pid, tids);
+//                }
+//            }
+//            if (exclusive.containsKey(pid)) {
+//                exclusive.remove(pid);
+//            }
+//            if (reverseShare.containsKey(tid)) {
+//                HashSet<PageId> pids = reverseShare.get(tid);
+//                pids.remove(pid);
+//                if (pids.size() == 0) {
+//                    reverseShare.remove(tid);
+//                } else {
+//                    reverseShare.put(tid, pids);
+//                }
+//            }
+//            if (reverseExclusive.containsKey(tid)) {
+//                HashSet<PageId> pids = reverseExclusive.get(tid);
+//                pids.remove(pid);
+//                if (pids.size() == 0) {
+//                    reverseExclusive.remove(tid);
+//                } else {
+//                    reverseExclusive.put(tid, pids);
+//                }
+//            }
+//        }
+//
+//        public void releaseAllLock(TransactionId tid) {
+//            System.out.println(tid.getId()+"release all locks");
+//            if (reverseShare.containsKey(tid)) {
+//                HashSet<PageId> pids = reverseShare.get(tid);
+//                for (PageId pid : pids) {
+//                    if (share.containsKey(pid)) {
+//                        HashSet<TransactionId> tids = share.get(pid);
+//                        tids.remove(tid);
+//                        if (tids.size() == 0) {
+//                            share.remove(pid);
+//                        } else {
+//                            share.put(pid, tids);
+//                        }
+//                    }
+//                }
+//                reverseShare.remove(tid);
+//            }
+//            if (reverseExclusive.containsKey(tid)) {
+//                HashSet<PageId> pids = reverseExclusive.get(tid);
+//                for (PageId pid : pids) {
+//                    if (exclusive.containsKey(pid)) {
+//                        exclusive.remove(pid);
+//                    }
+//                }
+//                reverseExclusive.remove(tid);
+//            }
+//        }
 
         public boolean holdsLock(TransactionId tid, PageId pid) {
-            if (reverseShare.containsKey(tid) && reverseShare.get(tid).contains(pid)) {
-                return true;
+            if (!(this.reverse.containsKey(tid))) {
+                return false;
             }
-            if (reverseExclusive.containsKey(tid) && reverseExclusive.get(tid).contains(pid)) {
-                return true;
+
+            synchronized(this.reverse.get(tid)) {
+                return this.reverse.get(tid).contains(pid);
             }
-            return false;
         }
 
         public HashSet<PageId> exclusivePages(TransactionId tid) {
-            if (reverseExclusive.containsKey(tid)) {
-                return reverseExclusive.get(tid);
+            if (reverse.containsKey(tid)) {
+                return reverse.get(tid);
             } else {
                 return null;
             }
@@ -301,11 +406,12 @@ public class BufferPool {
     public synchronized Page getPage(TransactionId tid, PageId pid, Permissions perm)
             throws TransactionAbortedException, DbException {
         // some code goes here
-        manager.acquireLock(pid, tid, perm);
+//        manager.acquireLock(pid, tid, perm);
         //        locker.acquireLock(tid, pid, perm);
         if (pool.containsKey(pid)) {
             evictionList.remove(pid);
             evictionList.add(pid);
+            manager.acquireLock(pid, tid, perm);
             return pool.get(pid);
         } else {
             if (pool.size() == maxPages) {
@@ -315,6 +421,7 @@ public class BufferPool {
             Page page = dbFile.readPage(pid);
             pool.put(pid, page);
             evictionList.add(pid);
+            manager.acquireLock(pid, tid, perm);
             return page;
         }
     }
@@ -331,7 +438,7 @@ public class BufferPool {
     public  void releasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
-        manager.releaseLock(pid, tid);
+        manager.releaseLock(tid, pid);
     }
 
     /**
@@ -363,10 +470,10 @@ public class BufferPool {
             throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        
         if (commit) {
             flushPages(tid);
         } else {
-            System.out.println("abort");
             discardPages(tid);
         }
         manager.releaseAllLock(tid);
