@@ -77,7 +77,7 @@ public class BufferPool {
                             break;
                         } else {
                             long now = System.currentTimeMillis();
-                            if (now - start > 200) {
+                            if (now - start > 50) {
                                 throw new TransactionAbortedException();
                             }
                         }
@@ -95,7 +95,7 @@ public class BufferPool {
                             break;
                         } else {
                             long now = System.currentTimeMillis();
-                            if (now - start > 200) {
+                            if (now - start > 50) {
                                 throw new TransactionAbortedException();
                             }
                         }
